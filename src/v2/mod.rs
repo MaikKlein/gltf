@@ -8,6 +8,7 @@
 // except according to those terms.
 
 use serde;
+use std;
 
 /// Contains `Accessor` and other related data structures.
 pub mod accessor;
@@ -55,9 +56,25 @@ pub mod skin;
 pub mod texture;
 
 /// Contains convenience iterators for traversing the glTF tree.
+#[cfg(feature = "tree")]
 pub mod tree;
 
 pub use self::extras::Extras;
 pub use self::import::{import, ImportError};
 pub use self::root::{Index, Root};
+
+pub struct Gltf<E: Extras> {
+    path: std::path::PathBuf,
+    root: Root<E>,
+}
+
+impl<E: Extras> Gltf<E> {
+    pub fn path(&self) -> &std::path::Path {
+        self.path.as_ref()
+    }
+
+    pub fn tree<'a>(&'a self) -> Result<self::tree::Root<'a, E>, self::tree::root::CreationError> {
+        self.root.tree(&self.path)
+    }
+}
 

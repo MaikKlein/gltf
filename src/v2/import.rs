@@ -9,7 +9,7 @@
 
 use serde_json;
 use std;
-use v2::{Extras, Root};
+use v2::{Extras, Gltf, Root};
 
 /// Error encountered when importing a glTF 2.0 asset.
 #[derive(Debug)]
@@ -43,14 +43,15 @@ fn import_standard_gltf<E>(data: Vec<u8>) -> Result<Root<E>, ImportError>
 }
 
 /// Imports a glTF 2.0 asset.
-pub fn import<P, E>(path: P) -> Result<Root<E>, ImportError>
+pub fn import<P, E>(path: P) -> Result<Gltf<E>, ImportError>
     where P: AsRef<std::path::Path>,
           E: Extras
 {
     use std::io::Read;
     use self::ImportError::*;
-    
-    let mut file = std::fs::File::open(path)?;
+
+    let path_buf = path.as_ref().to_owned();
+    let mut file = std::fs::File::open(&path_buf)?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
 
@@ -61,12 +62,18 @@ pub fn import<P, E>(path: P) -> Result<Root<E>, ImportError>
         import_standard_gltf(buffer)?
     };
 
-    if root.range_check().is_ok() {
-        Ok(root)
-    } else {
-
-        Err(Invalid("index out of range".to_string()))
+    if !root.range_check().is_ok() {
+        return Err(Invalid("index out of range".to_string()));
     }
+
+    if !root.size_check().is_ok() {
+        return Err(Invalid("invalid attribute".to_string()));
+    }
+
+    Ok(Gltf {
+        path: path_buf,
+        root: root,
+    })
 }
 
 impl From<serde_json::Error> for ImportError {

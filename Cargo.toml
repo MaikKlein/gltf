@@ -14,12 +14,14 @@ include = [
 ]
 
 [dependencies]
+libc = "0.2"
 serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
 
 [features]
-default = []
+default = ["tree"]
+tree = []
 KHR_binary_glTF = []
 
 [[example]]

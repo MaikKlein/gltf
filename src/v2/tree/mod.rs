@@ -7,19 +7,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[cfg(feature = "tree")]
-extern crate libc;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
+pub mod accessor;
+pub mod buffer;
+pub mod mesh;
+pub mod root;
+pub mod scene;
 
-#[macro_use]
-mod macros;
-
-/// Contains data structures and functions for loading glTF 1.0.
-pub mod v1;
-
-/// Contains data structures and functions for loading glTF 2.0.
-pub mod v2;
+pub use self::root::Root;
 

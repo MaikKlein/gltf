@@ -85,7 +85,7 @@ fn import_binary_gltf<S, E>(mut stream: S) -> Result<Root<E>, ImportError>
 fn import_binary_gltf<S, E>(_stream: S) -> Result<Root<E>, ImportError>
     where S: std::io::Read, E: Extras
 {  
-    return Err(ImportError::ExtensionDisabled("KHR_binary_glTF".to_string()));
+    Err(ImportError::ExtensionDisabled("KHR_binary_glTF".to_string()))
 }
 
 /// Imports a standard (plain text JSON) glTF 1.0 asset.

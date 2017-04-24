@@ -80,6 +80,9 @@ pub struct Root<E: Extras> {
     
     #[serde(default)]
     nodes: Vec<scene::Node<E>>,
+
+    #[serde(default, skip_deserializing, skip_serializing)]
+    path: Option<std::path::PathBuf>,
     
     #[serde(default)]
     samplers: Vec<texture::Sampler<E>>,
@@ -238,7 +241,7 @@ impl<E: Extras> Root<E> {
     pub fn range_check(&self) -> Result<(), ()> {
         macro_rules! range_check {
             ($field:ident) => {
-                for item in self.$field.iter() {
+                for item in &self.$field {
                     let _ = item.range_check(self)?; 
                 }
             }
@@ -280,6 +283,15 @@ impl<E: Extras> Root<E> {
         &self.scenes
     }
 
+    /// Checks that all standard vertex attributes are the correct size.
+    /// Must be called only after a successful call to `Root::range_check()`.
+    pub fn size_check(&self) -> Result<(), ()> {
+        for mesh in self.meshes().iter() {
+            let _ = mesh.size_check(&self)?;
+        }
+        Ok(())
+    }
+    
     /// Returns the skin at the given index.
     pub fn skin(&self, index: Index<skin::Skin<E>>) -> &skin::Skin<E> {
         &self.skins[index.0 as usize]
@@ -301,8 +313,11 @@ impl<E: Extras> Root<E> {
     }
 
     /// Returns the root tree iterator.
-    pub fn tree<'a>(&'a self) -> tree::Root<'a, E> {
-        tree::Root::new(self)
+    pub fn tree<'a>(
+        &'a self,
+        path: &'a std::path::Path,
+    ) -> Result<tree::root::Root<'a, E>, tree::root::CreationError> {
+        tree::Root::new(self, path)
     }
 }
 

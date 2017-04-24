@@ -117,6 +117,29 @@ pub mod sparse {
     }
 }
 
+enum_number! {
+    ComponentType {
+        I8 = 5120,
+        U8 = 5121,
+        I16 = 5122,
+        U16 = 5123,
+        U32 = 5125,
+        F32 = 5126,
+    }
+}
+
+enum_string! {
+    Kind {
+        Scalar = "SCALAR",
+        Vec2 = "VEC2",
+        Vec3 = "VEC3",
+        Vec4 = "VEC4",
+        Mat2 = "MAT2",
+        Mat3 = "MAT3",
+        Mat4 = "MAT4",
+    }
+}
+
 /// Extension specific data for an `Accessor`.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct AccessorExtensions {
@@ -177,6 +200,11 @@ pub struct Accessor<E: Extras> {
 }
 
 impl<E: Extras> Accessor<E> {
+    /// Returns the total size of each component in bytes.
+    pub fn component_size(&self) -> usize {
+        self.component_type.size() * self.kind.multiplicity()
+    }
+    
     /// Returns `Ok(())` if all indices are in range of the maximums.
     #[doc(hidden)]
     pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
@@ -189,25 +217,30 @@ impl<E: Extras> Accessor<E> {
     }
 }
 
-enum_number! {
-    ComponentType {
-        I8 = 5120,
-        U8 = 5121,
-        I16 = 5122,
-        U16 = 5123,
-        U32 = 5125,
-        F32 = 5126,
+impl ComponentType {
+    /// Returns the size in bytes of the component type.
+    pub fn size(self) -> usize {
+        use self::ComponentType::*;
+        match self {
+            I8 | U8 => 1,
+            I16 | U16 => 2,
+            U32 | F32 => 4,
+        }
     }
 }
 
-enum_string! {
-    Kind {
-        Scalar = "SCALAR",
-        Vec2 = "VEC2",
-        Vec3 = "VEC3",
-        Vec4 = "VEC4",
-        Mat2 = "MAT2",
-        Mat3 = "MAT3",
-        Mat4 = "MAT4",
+impl Kind {
+    /// Returns the number of contiguous elements this kind represents.
+    pub fn multiplicity(self) -> usize {
+        use self::Kind::*;
+        match self {
+            Scalar => 1,
+            Vec2 => 2,
+            Vec3 => 3,
+            Mat2 | Vec4 => 4,
+            Mat3 => 9,
+            Mat4 => 16,
+        }
     }
 }
+
