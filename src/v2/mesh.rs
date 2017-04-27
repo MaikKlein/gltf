@@ -83,11 +83,10 @@ pub struct Primitive<E: Extras> {
     #[serde(default)]
     pub mode: Mode,
     
-    /// Maps attribute names (only `"POSITION"` and `"NORMAL"`) to their
-    /// deviations in the morph target.
-    // TODO: Confirm that this the correct implementation.
+    /// Maps attribute names (only `"POSITION"`, `"NORMAL"`, and `"TANGENT"`) to
+    /// their deviations in the morph target.
     #[serde(default)]
-    pub targets: Vec<HashMap<String, Index<accessor::Accessor<E>>>>,
+    pub targets: Vec<HashMap<Semantic, Index<accessor::Accessor<E>>>>,
 }
 
 /// Extension specific data for `Primitive`.
@@ -127,43 +126,45 @@ pub enum Semantic {
 
 impl<E: Extras> Mesh<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        for primitive in &self.primitives {
-            for accessor in primitive.attributes.values() {
-                let _ = root.try_get(accessor)?;
-            }
-            if let Some(ref indices) = primitive.indices {
-                let _ = root.try_get(indices)?;
-            }
-            let _ = root.try_get(&primitive.material)?;
-            for map in &primitive.targets {
-                for accessor in map.values() {
-                    let _ = root.try_get(accessor)?;
-                }
-            }
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        mut warn: Fw,
+        mut err: Fe,
+    ) {
+        for (i, primitive) in self.primitives.iter().enumerate() {
+            let mut warn_fn = |source: &str, description: &str| {
+                let source = format!("primitive[{}].{}", i, source);
+                warn(&source, description);
+            };
+            let mut err_fn = |source: &str, description: &str| {
+                let source = format!("primitive[{}].{}", i, source);
+                err(&source, description);
+            };
+            primitive.validate(root, warn_fn, err_fn);
         }
-        Ok(())
-    }
-
-    #[doc(hidden)]
-    pub fn size_check(&self, root: &Root<E>) -> Result<(), ()> {
-        for primitive in &self.primitives {
-            let _ = primitive.size_check(root)?;
-        }
-        Ok(())
     }
 }
 
-impl<E: Extras> Primitive<E> {
+impl<E: Extras> Primitive<E> {  
     #[doc(hidden)]
-    pub fn size_check(&self, root: &Root<E>) -> Result<(), ()> {
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        mut warn: Fw,
+        mut err: Fe,
+    ) {
         use self::Semantic::*;
         use v2::accessor::ComponentType::*;
         use v2::accessor::Kind::*;
-        for (semantic, index) in self.attributes.iter() {
-            // N.B. Calling `try_get()` here instead of `get()` eliminates the
-            // need to call `range_check()` beforehand.
-            let accessor = root.try_get(index)?;
+        for (semantic, accessor_index) in &self.attributes {
+            let source = format!("attribute[{}]", semantic.to_string());
+            let accessor = root.try_get(accessor_index);
+            if accessor.is_err() {
+                err(&source, "Index out of range");
+                return;
+            }
+            let accessor = accessor.unwrap();
             let ty = (accessor.component_type, accessor.kind);
             match semantic {
                 &Color(_) => match ty {
@@ -173,28 +174,67 @@ impl<E: Extras> Primitive<E> {
                         | (U16, Vec4)
                         | (F32, Vec3)
                         | (F32, Vec4) => {},
-                    _ => return Err(()),
+                    _ => err(&source, "Invalid accessor for attribute COLOR_*"),
+                },
+                &Extra(ref name) if !name.starts_with("_") => {
+                    warn(&source, "User defined attributes should start with an underscore (`_`)");
                 },
                 &Extra(_) => {},
-                &Joint(_) | &Weight(_) => match ty {
+                &Joint(_) => match ty {
                     (U8, Vec4) | (U16, Vec4) => {},
-                    _ => return Err(()),
+                    _ => err(&source, "Invalid accessor for attribute JOINT_*"),
                 },
-                &Normal | &Position => match ty {
+                &Normal => match ty {
                     (F32, Vec3) => {},
-                    _ => return Err(()),
+                    _ => err(&source, "Invalid accessor for attribute NORMAL"),
+                },
+                &Position => match ty {
+                    (F32, Vec3) => {},
+                    _ => err(&source, "Invalid accessor for attribute POSITION"),
                 },
                 &Tangent => match ty {
                     (F32, Vec4) => {},
-                    _ => return Err(()),
+                    _ => err(&source, "Invalid accessor for attribute TANGENT"),
                 },
                 &TexCoord(_) => match ty {
                     (U8, Vec2) | (U16, Vec2) | (F32, Vec2) => {},
-                    _ => return Err(()),
+                    _ => err(&source, "Invalid accessor for attribute TEXCOORD_*"),
+                },
+                &Weight(_) => match ty {
+                    (U8, Vec4) | (U16, Vec4) => {},
+                    _ => err(&source, "Invalid accessor for attribute WEIGHT_*"),
                 },
             }
         }
-        Ok(())
+
+        if let Some(indices) = self.indices.as_ref() {
+            match root.try_get(indices) {
+                Ok(accessor) => {
+                    let ty = (accessor.component_type, accessor.kind);
+                    match ty {
+                        (U8, Scalar) | (U16, Scalar) | (U32, Scalar) => {},
+                        _ => err("indices", "Invalid accessor"),
+                    }
+                }
+                Err(_) => err("indices", "Index out of range"),
+            }
+        }
+
+        if let Err(_) = root.try_get(&self.material) {
+            err("material", "Index out of range");
+        }
+        for (i, map) in self.targets.iter().enumerate() {
+            for (semantic, accessor) in map {
+                let source = format!("targets[{}][{}]", i, semantic.to_string());
+                if let Err(_) = root.try_get(accessor) {
+                    err(&source, "Index out of range");
+                }
+                match semantic {
+                    &Normal | &Position | &Tangent => {},
+                    _ => err(&source, "Invalid attribute for Morph target"),
+                }
+            }
+        }
     }
 }
 
@@ -208,30 +248,45 @@ impl std::str::FromStr for Semantic {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use self::Semantic::*;
-        match s {
-            "NORMAL" => Ok(Normal),
-            "POSITION" => Ok(Position),
-            "TANGENT" => Ok(Tangent),
+        let semantic = match s {
+            "NORMAL" => Normal,
+            "POSITION" => Position,
+            "TANGENT" => Tangent,
             _ if s.starts_with("COLOR_") => {
                 let set = s["COLOR_".len()..].parse().map_err(|_| ())?;
-                Ok(Color(set))
+                Color(set)
             },
             _ if s.starts_with("TEXCOORD_") => {
                 let set = s["TEXCOORD_".len()..].parse().map_err(|_| ())?;
-                Ok(TexCoord(set))
+                TexCoord(set)
             },
             _ if s.starts_with("JOINT_") => {
                 let set = s["JOINT_".len()..].parse().map_err(|_| ())?;
-                Ok(Joint(set))
+                Joint(set)
             },
             _ if s.starts_with("WEIGHT_") => {
                 let set = s["WEIGHT_".len()..].parse().map_err(|_| ())?;
-                Ok(Weight(set))
+                Weight(set)
             },
-            other if s.starts_with("_") => Ok(Extra(other.to_string())),
-            _ => Err(()),
-        }
+            other => Extra(other.to_string()),
+        };
+        Ok(semantic)
+    }
+}
 
+impl std::string::ToString for Semantic {
+    fn to_string(&self) -> String {
+        use self::Semantic::*;
+        match self {
+            &Color(set) => format!("COLOR_{}", set),
+            &Extra(ref semantic) => semantic.clone(),
+            &Joint(set) => format!("JOINT_{}", set),
+            &Normal => "NORMAL".to_string(),
+            &Position => "POSITION".to_string(),
+            &Tangent => "TANGENT".to_string(),
+            &TexCoord(set) => format!("TEXCOORD_{}", set),
+            &Weight(set) => format!("WEIGHT_{}", set),
+        }
     }
 }
 
@@ -269,16 +324,6 @@ impl ::serde::ser::Serialize for Semantic {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
         where S: ::serde::ser::Serializer
     {
-        use self::Semantic::*;
-        match self {
-            &Color(set) => s.serialize_str(&format!("COLOR_{}", set)),
-            &Extra(ref semantic) => s.serialize_str(semantic),
-            &Joint(set) => s.serialize_str(&format!("JOINT_{}", set)),
-            &Normal => s.serialize_str("NORMAL"),
-            &Position => s.serialize_str("POSITION"),
-            &Tangent => s.serialize_str("TANGENT"),
-            &TexCoord(set) => s.serialize_str(&format!("TEXCOORD_{}", set)),
-            &Weight(set) => s.serialize_str(&format!("WEIGHT_{}", set)),
-        }
+        s.serialize_str(&self.to_string())
     }
 }

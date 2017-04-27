@@ -9,7 +9,7 @@
 
 use serde_json;
 use std;
-use v2::{Extras, Gltf, Root};
+use v2::{self, Extras, Gltf, Root};
 
 /// Error encountered when importing a glTF 2.0 asset.
 #[derive(Debug)]
@@ -31,6 +31,9 @@ pub enum ImportError {
     
     /// The glTF version of the asset is incompatible with this function.
     IncompatibleVersion(String),
+
+    /// Error encountered when validating glTF.
+    Validation(Vec<v2::validation::Error>),
 }
 
 /// Imports a standard (plain text JSON) glTF 2.0 asset.
@@ -62,18 +65,14 @@ pub fn import<P, E>(path: P) -> Result<Gltf<E>, ImportError>
         import_standard_gltf(buffer)?
     };
 
-    if !root.range_check().is_ok() {
-        return Err(Invalid("index out of range".to_string()));
+    if let Err(errs) = root.validate() {
+        Err(Validation(errs))
+    } else {
+        Ok(Gltf {
+            path: path_buf,
+            root: root,
+        })
     }
-
-    if !root.size_check().is_ok() {
-        return Err(Invalid("invalid attribute".to_string()));
-    }
-
-    Ok(Gltf {
-        path: path_buf,
-        root: root,
-    })
 }
 
 impl From<serde_json::Error> for ImportError {

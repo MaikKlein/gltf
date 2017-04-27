@@ -131,12 +131,12 @@ enum_number! {
 enum_string! {
     Kind {
         Scalar = "SCALAR",
-        Vec2 = "VEC2",
-        Vec3 = "VEC3",
-        Vec4 = "VEC4",
         Mat2 = "MAT2",
         Mat3 = "MAT3",
         Mat4 = "MAT4",
+        Vec2 = "VEC2",
+        Vec3 = "VEC3",
+        Vec4 = "VEC4",
     }
 }
 
@@ -150,7 +150,7 @@ pub struct AccessorExtensions {
 /// A typed view into a `BufferView`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Accessor<E: Extras> {
+pub struct Accessor<E: Extras> {  
     /// The parent `BufferView` this accessor reads from.
     #[serde(rename = "bufferView")]
     pub buffer_view: Index<buffer::BufferView<E>>,
@@ -166,19 +166,19 @@ pub struct Accessor<E: Extras> {
     /// The data type of each component.
     #[serde(rename = "componentType")]
     pub component_type: ComponentType,
-    
+
     /// Extension specific data.
     #[serde(default)]
     pub extensions: AccessorExtensions,
-    
+
     /// Optional application specific data.
     #[serde(default)]
     pub extras: <E as Extras>::Accessor,
-    
+
     /// The multiplicity of each component.
     #[serde(rename = "type")]
     pub kind: Kind,
-    
+
     /// Minimum value of each element in this attribute.
     #[serde(default)]
     pub min: Vec<f32>,
@@ -204,16 +204,25 @@ impl<E: Extras> Accessor<E> {
     pub fn component_size(&self) -> usize {
         self.component_type.size() * self.kind.multiplicity()
     }
-    
-    /// Returns `Ok(())` if all indices are in range of the maximums.
+
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        if let Some(ref sparse) = self.sparse {
-            let _ = root.try_get(&sparse.indices.buffer_view)?;
-            let _ = root.try_get(&sparse.values.buffer_view)?;
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
+        if let Some(sparse) = self.sparse.as_ref() {
+            if let Err(_) = root.try_get(&sparse.indices.buffer_view) {
+                err("sparse.indices.buffer_view", "Index out of range");
+            }
+            if let Err(_) = root.try_get(&sparse.values.buffer_view) {
+                err("sparse.values.buffer_view", "Index out of range");
+            }
         }
-        let _ = root.try_get(&self.buffer_view)?;
-        Ok(())
+        if let Err(_) = root.try_get(&self.buffer_view) {
+            err("buffer_view", "Index out of range");
+        }
     }
 }
 
@@ -230,7 +239,7 @@ impl ComponentType {
 }
 
 impl Kind {
-    /// Returns the number of contiguous elements this kind represents.
+    /// Returns the equivalent number of scalars this kind represents.
     pub fn multiplicity(self) -> usize {
         use self::Kind::*;
         match self {
@@ -243,4 +252,3 @@ impl Kind {
         }
     }
 }
-

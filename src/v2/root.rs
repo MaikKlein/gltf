@@ -107,6 +107,8 @@ pub struct RootExtensions {
     _allow_extra_fields: (),
 }
 
+/// Details of error conditions produced by `Validate::validate`.
+
 impl<E: Extras> Root<E> {
     /// Returns the accessor at the given index.
     pub fn accessor(&self, index: Index<accessor::Accessor<E>>) -> &accessor::Accessor<E> {
@@ -235,34 +237,6 @@ impl<E: Extras> Root<E> {
         &self.nodes
     }
     
-    /// Performs a search for any indices that are out of range of the array
-    /// they reference. Returns true if all indices are within range.
-    #[doc(hidden)]
-    pub fn range_check(&self) -> Result<(), ()> {
-        macro_rules! range_check {
-            ($field:ident) => {
-                for item in &self.$field {
-                    let _ = item.range_check(self)?; 
-                }
-            }
-        }
-        range_check!(accessors);
-        range_check!(animations);
-        range_check!(buffers);
-        range_check!(buffer_views);
-        range_check!(cameras);
-        range_check!(images);
-        range_check!(materials);
-        range_check!(meshes);
-        range_check!(nodes);
-        range_check!(samplers);
-        range_check!(scenes);
-        range_check!(skins);
-        range_check!(textures);
-        let _ = self.try_get(&self.default_scene)?;
-        Ok(())
-    }
-
     /// Returns the sampler at the given index.
     pub fn sampler(&self, index: Index<texture::Sampler<E>>) -> &texture::Sampler<E> {
         &self.samplers[index.0 as usize]
@@ -283,15 +257,6 @@ impl<E: Extras> Root<E> {
         &self.scenes
     }
 
-    /// Checks that all standard vertex attributes are the correct size.
-    /// Must be called only after a successful call to `Root::range_check()`.
-    pub fn size_check(&self) -> Result<(), ()> {
-        for mesh in self.meshes().iter() {
-            let _ = mesh.size_check(&self)?;
-        }
-        Ok(())
-    }
-    
     /// Returns the skin at the given index.
     pub fn skin(&self, index: Index<skin::Skin<E>>) -> &skin::Skin<E> {
         &self.skins[index.0 as usize]
@@ -318,6 +283,81 @@ impl<E: Extras> Root<E> {
         path: &'a std::path::Path,
     ) -> Result<tree::root::Root<'a, E>, tree::root::CreationError> {
         tree::Root::new(self, path)
+    }
+
+    pub fn validate(&self) -> Result<Vec<validation::Error>, Vec<validation::Error>> {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+
+        for (i, accessor) in self.accessors.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("accessor[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("accessor[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            accessor.validate(self, warn_fn, err_fn);
+        }
+
+        for (i, buffer_view) in self.buffer_views.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("buffer_view[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("buffer_view[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            buffer_view.validate(self, warn_fn, err_fn);
+        }
+
+        for (i, buffer) in self.buffers.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("buffer[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("buffer[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            buffer.validate(self, warn_fn, err_fn);
+        }
+
+        for (i, mesh) in self.meshes.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("meshes[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("meshes[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            mesh.validate(self, warn_fn, err_fn);
+        }
+
+        if errors.is_empty() {
+            Ok(warnings)
+        } else {
+            Err(errors)
+        }
     }
 }
 

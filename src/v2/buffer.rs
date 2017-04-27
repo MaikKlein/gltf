@@ -96,12 +96,31 @@ impl<E: Extras> Buffer<E> {
     pub fn range_check(&self, _root: &Root<E>) -> Result<(), ()> {
         Ok(())
     }
+
+    #[doc(hidden)]
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        _root: &Root<E>,
+        _warn: Fw,
+        _err: Fe,
+    ) {
+    }
 }
 
 impl<E: Extras> BufferView<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        let _ = root.try_get(&self.buffer)?;
-        Ok(())
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
+        if let Ok(buffer) = root.try_get(&self.buffer) {
+            if self.byte_offset + self.byte_length > buffer.byte_length {
+                err("{byte_offset, byte_length}", "Oversized buffer view");
+            }
+        } else {
+            err("buffer", "Index out of range");
+        }
     }
 }

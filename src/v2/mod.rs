@@ -5,7 +5,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
-// except according to those terms.
+// except according to tho2se terms.
 
 use serde;
 use std;
@@ -58,6 +58,9 @@ pub mod texture;
 /// Contains convenience iterators for traversing the glTF tree.
 #[cfg(feature = "tree")]
 pub mod tree;
+
+/// Contains data structures associated with glTF validation.
+pub mod validation;
 
 pub use self::extras::Extras;
 pub use self::import::{import, ImportError};
