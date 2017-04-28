@@ -290,19 +290,33 @@ fn material_occlusion_texture_strength_default() -> f32 {
 
 impl<E: Extras> Material<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
         if let Some(ref texture) = self.normal_texture {
-            let _ = root.try_get(&texture.index)?;
+            if let Err(_) = root.try_get(&texture.index) {
+                err("normalTexture.index", "Index out of range");
+            }
         }
         if let Some(ref texture) = self.occlusion_texture {
-            let _ = root.try_get(&texture.index)?;
+            if let Err(_) = root.try_get(&texture.index) {
+                err("occulsionTexture.index", "Index out of range");
+            }
         }
         if let Some(ref texture) = self.emissive_texture {
-            let _ = root.try_get(&texture.index)?;
+            if let Err(_) = root.try_get(&texture.index) {
+                err("emissiveTexture.index", "Index out of range");
+            }
         }
-        let _ = root.try_get(&self.pbr_metallic_roughness.base_color_texture.index)?;
-        let _ = root.try_get(&self.pbr_metallic_roughness.metallic_roughness_texture.index)?;
-        Ok(())
+        if let Err(_) = root.try_get(&self.pbr_metallic_roughness.base_color_texture.index) {
+            err("pbrMetallicRoughness.baseColorTexture.index", "Index out of range");
+        }
+        if let Err(_) = root.try_get(&self.pbr_metallic_roughness.metallic_roughness_texture.index) {
+            err("pbrMetallicRoughness.metallicRoughnessTexture.index", "Index out of range");
+        }
     }
 }
 

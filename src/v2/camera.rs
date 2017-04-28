@@ -9,6 +9,13 @@
 
 use v2::{Extras, Root};
 
+enum_string! {
+    CameraType {
+        Orthographic = "orthographic",
+        Perspective = "perspective",
+    }
+}
+    
 /// A camera's projection.
 ///
 /// A node can reference a camera to apply a transform to place the camera in the
@@ -29,7 +36,7 @@ pub struct Camera<E: Extras> {
 
     /// Specifies if the camera uses a perspective or orthographic projection.
     #[serde(rename = "type")]
-    pub ty: String,
+    pub ty: CameraType,
 
     /// Extension specific data.
     #[serde(default)]
@@ -121,7 +128,29 @@ pub struct PerspectiveExtensions {
 
 impl<E: Extras> Camera<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, _root: &Root<E>) -> Result<(), ()> {
-        Ok(())
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        _root: &Root<E>,
+        mut warn: Fw,
+        mut err: Fe,
+    ) {
+        match self.ty {
+            CameraType::Orthographic => {
+                if self.orthographic.is_none() {
+                    err("orthographic", "Missing data");
+                }
+                if self.perspective.is_some() {
+                    warn("perspective", "Redundant data");
+                }
+            }
+            CameraType::Perspective => {
+                if self.perspective.is_none() {
+                    err("perspective", "Missing data");
+                }
+                if self.orthographic.is_some() {
+                    warn("orthographic", "Redundant data");
+                }
+            }
+        }
     }
 }

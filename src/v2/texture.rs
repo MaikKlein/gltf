@@ -143,7 +143,6 @@ pub struct TextureExtensions {
     _allow_extra_fields: (),
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 /// Reference to a `Texture`.
@@ -171,19 +170,20 @@ pub struct TextureInfoExtensions {
     _allow_extra_fields: (),
 }
 
-impl<E: Extras> Sampler<E> {
-    #[doc(hidden)]
-    pub fn range_check(&self, _root: &Root<E>) -> Result<(), ()> {
-        Ok(())
-    }
-}
-
 impl<E: Extras> Texture<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        let _ = root.try_get(&self.sampler)?;
-        let _ = root.try_get(&self.source)?;
-        Ok(())
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
+        if let Err(_) = root.try_get(&self.sampler) {
+            err("sampler", "Index out of range");
+        }
+        if let Err(_) = root.try_get(&self.source) {
+            err("source", "Index out of range");
+        }
     }
 }
 

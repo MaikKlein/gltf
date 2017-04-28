@@ -50,10 +50,16 @@ pub struct ImageExtensions {
 
 impl<E: Extras> Image<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
         if let Some(ref buffer_view) = self.buffer_view {
-            let _ = root.try_get(buffer_view)?;
+            if let Err(_) = root.try_get(buffer_view) {
+                err("buffer_view", "Index out of range");
+            }
         }
-        Ok(())
     }
 }

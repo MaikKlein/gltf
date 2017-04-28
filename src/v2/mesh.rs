@@ -133,11 +133,11 @@ impl<E: Extras> Mesh<E> {
         mut err: Fe,
     ) {
         for (i, primitive) in self.primitives.iter().enumerate() {
-            let mut warn_fn = |source: &str, description: &str| {
+            let warn_fn = |source: &str, description: &str| {
                 let source = format!("primitive[{}].{}", i, source);
                 warn(&source, description);
             };
-            let mut err_fn = |source: &str, description: &str| {
+            let err_fn = |source: &str, description: &str| {
                 let source = format!("primitive[{}].{}", i, source);
                 err(&source, description);
             };

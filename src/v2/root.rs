@@ -305,20 +305,20 @@ impl<E: Extras> Root<E> {
             accessor.validate(self, warn_fn, err_fn);
         }
 
-        for (i, buffer_view) in self.buffer_views.iter().enumerate() {
+        for (i, animation) in self.animations.iter().enumerate() {
             let warn_fn = |source: &str, description: &str| {
                 warnings.push(validation::Error {
-                    source: format!("buffer_view[{}].{}", i, source),
+                    source: format!("animations[{}].{}", i, source),
                     description: description.to_string(),
                 });
             };
             let err_fn = |source: &str, description: &str| {
                 errors.push(validation::Error {
-                    source: format!("buffer_view[{}].{}", i, source),
+                    source: format!("animations[{}].{}", i, source),
                     description: description.to_string(),
                 });
             };
-            buffer_view.validate(self, warn_fn, err_fn);
+            animation.validate(self, warn_fn, err_fn);
         }
 
         for (i, buffer) in self.buffers.iter().enumerate() {
@@ -337,6 +337,70 @@ impl<E: Extras> Root<E> {
             buffer.validate(self, warn_fn, err_fn);
         }
 
+        for (i, buffer_view) in self.buffer_views.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("bufferViews[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("bufferViews[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            buffer_view.validate(self, warn_fn, err_fn);
+        }
+
+        for (i, camera) in self.cameras.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("cameras[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("cameras[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            camera.validate(self, warn_fn, err_fn);            
+        }
+        
+        for (i, image) in self.images.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("images[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("images[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            image.validate(self, warn_fn, err_fn);
+        }
+        
+        for (i, material) in self.materials.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("material[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("material[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            material.validate(self, warn_fn, err_fn);
+        }
+
         for (i, mesh) in self.meshes.iter().enumerate() {
             let warn_fn = |source: &str, description: &str| {
                 warnings.push(validation::Error {
@@ -351,6 +415,77 @@ impl<E: Extras> Root<E> {
                 });
             };
             mesh.validate(self, warn_fn, err_fn);
+        }
+
+        for (i, node) in self.nodes.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("nodes[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("nodes[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            node.validate(self, warn_fn, err_fn);   
+        }
+
+        for (i, scene) in self.scenes.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("scenes[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("scenes[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            scene.validate(self, warn_fn, err_fn);
+        }
+
+        for (i, skin) in self.skins.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("skins[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("skins[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            skin.validate(self, warn_fn, err_fn);            
+        }
+        
+        if let Err(_) = self.try_get(&self.default_scene) {
+            errors.push(validation::Error {
+                source: "scene".to_string(),
+                description: "Index out of range".to_string(),
+            });
+        }
+
+        for (i, texture) in self.textures.iter().enumerate() {
+            let warn_fn = |source: &str, description: &str| {
+                warnings.push(validation::Error {
+                    source: format!("textures[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            let err_fn = |source: &str, description: &str| {
+                errors.push(validation::Error {
+                    source: format!("textures[{}].{}", i, source),
+                    description: description.to_string(),
+                });
+            };
+            texture.validate(self, warn_fn, err_fn);
         }
 
         if errors.is_empty() {

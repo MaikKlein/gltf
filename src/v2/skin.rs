@@ -52,16 +52,27 @@ pub struct SkinExtensions {
 
 impl<E: Extras> Skin<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        if let Some(ref accessor) = self.inverse_bind_matrices {
-            let _ = root.try_get(accessor)?;
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
+        if let Some(accessor) = self.inverse_bind_matrices.as_ref() {
+            if let Err(_) = root.try_get(accessor) {
+                err("accessor", "Index out of range");
+            }
         }
-        for joint in &self.joints {
-            let _ = root.try_get(joint)?;
+        for (i, joint) in self.joints.iter().enumerate() {
+            if let Err(_) = root.try_get(joint) {
+                let source = format!("joints[{}]", i);
+                err(&source, "Index out of range");
+            }
         }
-        if let Some(ref node) = self.skeleton {
-            let _ = root.try_get(node)?;
+        if let Some(node) = self.skeleton.as_ref() {
+            if let Err(_) = root.try_get(node) {
+                err("skeleton", "Index out of range");
+            }
         }
-        Ok(())
     }
 }

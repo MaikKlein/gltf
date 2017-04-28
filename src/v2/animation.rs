@@ -155,4 +155,33 @@ impl<E: Extras> Animation<E> {
         }
         Ok(())
     }
+
+    #[doc(hidden)]
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
+        for (i, sampler) in self.samplers.iter().enumerate() {
+            if let Err(_) = root.try_get(&sampler.input) {
+                let source = format!("samplers[{}].input", i);
+                err(&source, "Index out of range");
+            }
+            if let Err(_) = root.try_get(&sampler.output) {
+                let source = format!("samples[{}].output", i);
+                err(&source, "Index out of range");
+            }
+        }
+        for (i, channel) in self.channels.iter().enumerate() {
+            if let Err(_) = root.try_get(&channel.target.node) {
+                let source = format!("channels[{}].target.node", i);
+                err(&source, "Index out of range");
+            }
+            if channel.sampler.value() as usize >= self.samplers.len() {
+                let source = format!("channels[{}].sampler", i);
+                err(&source, "Index out of range");
+            }
+        }
+    }
 }

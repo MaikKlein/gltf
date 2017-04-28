@@ -120,29 +120,49 @@ pub struct SceneExtensions {
 
 impl<E: Extras> Node<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
         if let Some(ref camera) = self.camera {
-            let _ = root.try_get(&camera)?;
-            for node in &self.children {
-                let _ = root.try_get(node)?;
+            if let Err(_) = root.try_get(&camera) {
+                err("camera", "Index out of range");
+            }
+            for (i, node) in self.children.iter().enumerate() {
+                if let Err(_) = root.try_get(node) {
+                    let source = format!("children[{}]", i);
+                    err(&source, "Index out of range");
+                }
             }
         }
         if let Some(ref mesh) = self.mesh {
-            let _ = root.try_get(mesh)?;
+            if let Err(_) = root.try_get(mesh) {
+                err("mesh", "Index out of range");
+            }
         }
         if let Some(ref skin) = self.skin {
-            let _ = root.try_get(skin)?;
+            if let Err(_) = root.try_get(skin) {
+                err("skin", "Index out of range");
+            }
         }
-        Ok(())
     }
 }
 
 impl<E: Extras> Scene<E> {
     #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        for node in &self.nodes {
-            let _ = root.try_get(node)?;
+    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
+        &self,
+        root: &Root<E>,
+        _warn: Fw,
+        mut err: Fe,
+    ) {
+        for (i, node) in self.nodes.iter().enumerate() {
+            if let Err(_) = root.try_get(node) {
+                let source = format!("node[{}]", i);
+                err(&source, "Index out of range");
+            }
         }
-        Ok(())
     }
 }

@@ -66,18 +66,28 @@ pub use self::extras::Extras;
 pub use self::import::{import, ImportError};
 pub use self::root::{Index, Root};
 
+/// Return type of `import()`.
 pub struct Gltf<E: Extras> {
     path: std::path::PathBuf,
     root: Root<E>,
 }
 
 impl<E: Extras> Gltf<E> {
+    /// Returns the path the glTF was loaded from.
     pub fn path(&self) -> &std::path::Path {
         self.path.as_ref()
     }
 
+    /// Returns the tree iterator.
     pub fn tree<'a>(&'a self) -> Result<self::tree::Root<'a, E>, self::tree::root::CreationError> {
         self.root.tree(&self.path)
+    }
+}
+
+impl<E: Extras> std::ops::Deref for Gltf<E> {
+    type Target = Root<E>;
+    fn deref(&self) -> &Self::Target {
+        &self.root
     }
 }
 
