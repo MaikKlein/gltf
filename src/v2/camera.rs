@@ -59,20 +59,20 @@ pub struct CameraExtensions {
 #[serde(deny_unknown_fields)]
 pub struct Orthographic<E: Extras> {
     /// The horizontal magnification of the view.
-    #[serde(default, rename = "xmag")]
-    pub x_mag: f32,
+    #[serde(default)]
+    pub xmag: f32,
 
     /// The vertical magnification of the view.
-    #[serde(default, rename = "ymag")]
-    pub y_mag: f32,
+    #[serde(default)]
+    pub ymag: f32,
 
     /// The distance to the far clipping plane.
-    #[serde(default, rename = "zfar")]
-    pub z_far: f32,
+    #[serde(default)]
+    pub zfar: f32,
 
     /// The distance to the near clipping plane.
-    #[serde(default, rename = "znear")]
-    pub z_near: f32,
+    #[serde(default)]
+    pub znear: f32,
 
     /// Extension specific data.
     #[serde(default)]
@@ -95,20 +95,20 @@ pub struct OrthographicExtensions {
 #[serde(deny_unknown_fields)]
 pub struct Perspective<E: Extras> {
     /// Aspect ratio of the field of view.
-    #[serde(default, rename = "aspectRatio")]
+    #[serde(default)]
     pub aspect_ratio: f32,
 
     /// The vertical field of view in radians.
-    #[serde(default, rename = "yfov")]
-    pub y_fov: f32,
+    #[serde(default)]
+    pub yfov: f32,
 
     /// The distance to the far clipping plane.
-    #[serde(default, rename = "zfar")]
-    pub z_far: f32,
+    #[serde(default)]
+    pub zfar: f32,
 
     /// The distance to the near clipping plane.
-    #[serde(default, rename = "znear")]
-    pub z_near: f32,
+    #[serde(default)]
+    pub znear: f32,
 
     /// Extension specific data.
     #[serde(default)]
