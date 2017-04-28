@@ -67,6 +67,7 @@ pub use self::import::{import, ImportError};
 pub use self::root::{Index, Root};
 
 /// Return type of `import()`.
+#[derive(Clone, Debug)]
 pub struct Gltf<E: Extras> {
     path: std::path::PathBuf,
     root: Root<E>,

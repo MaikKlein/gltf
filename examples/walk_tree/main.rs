@@ -11,7 +11,7 @@ extern crate gltf;
 
 type Extras = gltf::v2::extras::None;
 
-fn visit_nodes(node: &gltf::v2::tree::Node<Extras>, level: u32) {
+fn visit_nodes(node: &gltf::v2::tree::scene::Node<Extras>, level: u32) {
     println!("Node {}", level);
     for child in node.iter_child_nodes() {
         visit_nodes(&child, level + 1);
@@ -21,7 +21,7 @@ fn visit_nodes(node: &gltf::v2::tree::Node<Extras>, level: u32) {
 fn main() {
     let path = "glTF-Sample-Models/2.0/Lantern/glTF/Lantern.gltf";
     let gltf = gltf::v2::import::<_, Extras>(path).unwrap();
-    for scene in gltf.tree().iter_scenes() {
+    for scene in gltf.tree().unwrap().iter_scenes() {
         for node in scene.iter_nodes() {
             visit_nodes(&node, 1);
         }
