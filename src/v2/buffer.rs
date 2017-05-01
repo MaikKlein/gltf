@@ -7,120 +7,137 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use v2::{Extras, Index, Root};
+use std;
+use v2::{raw, Extras, Root};
 
-enum_number! {
-    Target {
-        ArrayBuffer = 34962,
-        ElementArrayBuffer = 34963,
+/// A fixed size 4-byte aligned byte buffer.
+#[derive(Debug)]
+pub struct AlignedBufferData {
+    /// Owned data.
+    data: Vec<u8>,
+
+    /// Length of the buffer in bytes
+    len: usize,
+
+    /// Byte offset where the data starts.
+    offset: usize,
+}
+
+/// Returns the number of bytes between a pointer address and the address of the
+/// nearest 4-byte alignment boundary ahead.
+fn offset_of_nearest_alignment_boundary(address: *const u8) -> usize {
+    [0, 3, 2, 1][address as usize % 4]
+}
+
+#[derive(Debug)]
+pub struct Buffer<'a, X: 'a + Extras> {
+    /// Contains the pre-loaded buffer data this `Buffer` describes.
+    data: &'a AlignedBufferData,
+    
+    /// The internal glTF object data.
+    raw: &'a raw::buffer::Buffer<X>,
+
+    /// The root glTF object.
+    root: &'a Root<X>,
+}
+
+#[derive(Debug)]
+pub struct BufferView<'a, X: 'a + Extras> {
+    /// The internal glTF object data.
+    raw: &'a raw::buffer::BufferView<X>,
+
+    /// The root glTF object.
+    root: &'a Root<X>,
+}
+
+impl<'a, X: 'a + Extras> Buffer<'a, X> {
+    /// Constructor for a `Buffer`.
+    pub fn from_raw(
+        root: &'a Root<X>,
+        raw: &'a raw::buffer::Buffer<X>,
+        data: &'a AlignedBufferData,
+    ) -> Self {
+        Self {
+            data: data,
+            raw: raw,
+            root: root,
+        }
+    }
+
+    /// Returns the entire contents of the pre-loaded buffer data this `Buffer`
+    /// describes.
+    pub fn data(&mut self) -> &[u8] {
+        &self.data[..]
     }
 }
 
-/// A buffer points to binary data representing geometry, animations, or skins.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Buffer<E: Extras> {
-    /// The length of the buffer in bytes.
-    #[serde(default, rename = "byteLength")]
-    pub byte_length: u32,
+impl AlignedBufferData {
+    /// Creates an uninitialized fixed sized 4-byte aligned byte buffer.
+    pub unsafe fn uninitialized(len: usize) -> Self {
+        let n_padding_bytes = 3;
+        let mut data = Vec::with_capacity(len + n_padding_bytes);
+        data.set_len(len + n_padding_bytes);
+        let offset = offset_of_nearest_alignment_boundary(data.as_ptr());
+        AlignedBufferData {
+            data: data,
+            len: len,
+            offset: offset,
+        }
+    }
+}
 
-    /// Optional user-defined name for this object.
-    pub name: Option<String>,
+impl<'a, X: 'a + Extras> BufferView<'a, X> {
+    /// Returns the buffer this buffer view points to.
+    pub fn buffer(&'a self) -> Buffer<'a, X> {
+        Buffer::from_raw(
+            &self.root,
+            self.root.get(&self.raw.buffer),
+            self.root.buffer_data(&self.raw.buffer),
+        )
+    }
 
-    /// Uniform resource locator of the buffer.
+    /// Returns a slice of the pre-loaded buffer data.
     ///
-    /// Relative paths are relative to the .gltf file.
-    pub uri: String,
+    /// Note that this is not the same as calling `buffer().data()`,
+    /// which would instead return the entire contents of the parent buffer.
+    pub fn data(&'a self) -> &'a [u8] {
+        let begin = self.raw.byte_offset as usize;
+        let end = begin + self.raw.byte_length as usize;
+        let buffer_data = self.root.buffer_data(&self.raw.buffer);
+        &buffer_data[begin..end]
+    }
 
-    /// Extension specific data.
-    #[serde(default)]
-    pub extensions: BufferExtensions,
-
-    /// Optional application specific data.
-    #[serde(default)]
-    pub extras: <E as Extras>::Buffer,
-}
-
-/// Extension specific data for `Buffer`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct BufferExtensions {
-    #[serde(default)]
-    _allow_extra_fields: (),
-}
-
-/// A view into a buffer generally representing a subset of the buffer.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct BufferView<E: Extras> {
-    /// The parent `Buffer`.
-    pub buffer: Index<Buffer<E>>,
-
-    /// The length of the `BufferView` in bytes.
-    #[serde(rename = "byteLength")]
-    pub byte_length: u32,
-
-    /// Offset into the parent buffer in bytes.
-    #[serde(rename = "byteOffset")]
-    pub byte_offset: u32,
+    pub fn from_raw(
+        root: &'a Root<X>,
+        raw: &'a raw::buffer::BufferView<X>,
+    ) -> Self {
+        Self {
+            raw: raw,
+            root: root,
+        }
+    }
 
     /// The stride in bytes between vertex attributes or other interleavable data.
     ///
     /// When zero, data is assumed to be tightly packed.
-    #[serde(default)]
-    pub byte_stride: u32,
-
-    /// Optional user-defined name for this object.
-    pub name: Option<String>,
-
-    /// Optional target the buffer should be bound to.
-    pub target: Option<Target>,
-
-    /// Extension specific data.
-    #[serde(default)]
-    pub extensions: BufferViewExtensions,
-
-    /// Optional application specific data.
-    #[serde(default)]
-    pub extras: <E as Extras>::BufferView,
-}
-
-/// Extension specific data for `BufferView`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct BufferViewExtensions {
-    #[serde(default)]
-    _allow_extra_fields: (),
-}
-
-impl<E: Extras> Buffer<E> {
-    #[doc(hidden)]
-    pub fn range_check(&self, _root: &Root<E>) -> Result<(), ()> {
-        Ok(())
-    }
-
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        _root: &Root<E>,
-        _warn: Fw,
-        _err: Fe,
-    ) {
+    pub fn stride(&self) -> u32 {
+        self.raw.byte_stride
     }
 }
 
-impl<E: Extras> BufferView<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        _warn: Fw,
-        mut err: Fe,
-    ) {
-        if let Ok(buffer) = root.try_get(&self.buffer) {
-            if self.byte_offset + self.byte_length > buffer.byte_length {
-                err("{byte_offset, byte_length}", "Oversized buffer view");
-            }
-        } else {
-            err("buffer", "Index out of range");
-        }
+impl std::ops::Deref for AlignedBufferData {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        let begin = self.offset;
+        let end = begin + self.len;
+        &self.data[begin..end]
+    }
+}
+
+impl std::ops::DerefMut for AlignedBufferData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        let begin = self.offset;
+        let end = begin + self.len;
+        &mut self.data[begin..end]
     }
 }

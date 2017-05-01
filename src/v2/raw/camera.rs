@@ -7,7 +7,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use v2::{Extras, Root};
+use v2::{Extras, Root, Validate};
 
 enum_string! {
     CameraType {
@@ -22,17 +22,17 @@ enum_string! {
 /// scene.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Camera<E: Extras> {
+pub struct Camera<X: Extras> {
     /// Optional user-defined name for this object.
     pub name: Option<String>,
 
     /// An orthographic camera containing properties to create an orthographic
     /// projection matrix.
-    pub orthographic: Option<Orthographic<E>>,
+    pub orthographic: Option<Orthographic<X>>,
 
     /// A perspective camera containing properties to create a perspective
     /// projection matrix.
-    pub perspective: Option<Perspective<E>>,
+    pub perspective: Option<Perspective<X>>,
 
     /// Specifies if the camera uses a perspective or orthographic projection.
     #[serde(rename = "type")]
@@ -44,7 +44,7 @@ pub struct Camera<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::Camera,
+    pub extras: <X as Extras>::Camera,
 }
 
 /// Extension specific data for `Camera`.
@@ -57,7 +57,7 @@ pub struct CameraExtensions {
 /// Values for an orthographic camera.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Orthographic<E: Extras> {
+pub struct Orthographic<X: Extras> {
     /// The horizontal magnification of the view.
     #[serde(default)]
     pub xmag: f32,
@@ -80,7 +80,7 @@ pub struct Orthographic<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::CameraOrthographic,
+    pub extras: <X as Extras>::CameraOrthographic,
 }
 
 /// Extension specific data for `Orthographic`.
@@ -93,7 +93,7 @@ pub struct OrthographicExtensions {
 /// Values for a perspective camera.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Perspective<E: Extras> {
+pub struct Perspective<X: Extras> {
     /// Aspect ratio of the field of view.
     #[serde(default)]
     pub aspect_ratio: f32,
@@ -116,7 +116,7 @@ pub struct Perspective<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::CameraPerspective,
+    pub extras: <X as Extras>::CameraPerspective,
 }
 
 /// Extension specific data for `Perspective`.
@@ -126,14 +126,10 @@ pub struct PerspectiveExtensions {
     _allow_extra_fields: (),
 }
 
-impl<E: Extras> Camera<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        _root: &Root<E>,
-        mut warn: Fw,
-        mut err: Fe,
-    ) {
+impl<X: Extras> Validate<X> for Camera<X> {
+    fn validate<W, E>(&self, _root: &Root<X>, mut warn: W, mut err: E)
+        where W: FnMut(&str, &str), E: FnMut(&str, &str)
+    {
         match self.ty {
             CameraType::Orthographic => {
                 if self.orthographic.is_none() {

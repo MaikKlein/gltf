@@ -7,7 +7,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use v2::{image, Extras, Index, Root};
+use v2::{raw, Extras, Root, Validate};
+use v2::raw::root::Index;
 
 enum_number! {
     DataType {
@@ -63,7 +64,7 @@ enum_number! {
 /// Texture sampler properties for filtering and wrapping modes.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Sampler<E: Extras> {
+pub struct Sampler<X: Extras> {
     /// Magnification filter.
     #[serde(default, rename = "magFilter")]
     pub mag_filter: MagFilter,
@@ -89,7 +90,7 @@ pub struct Sampler<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::Sampler,
+    pub extras: <X as Extras>::Sampler,
 }
 
 /// Extension specific data for `Sampler`.
@@ -101,7 +102,7 @@ pub struct SamplerExtensions {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Texture<E: Extras> {
+pub struct Texture<X: Extras> {
     /// Texel data type.
     #[serde(default, rename = "type")]
     pub data_type: DataType,
@@ -118,10 +119,10 @@ pub struct Texture<E: Extras> {
     pub internal_format: Format,
 
     /// The index of the sampler used by this texture.
-    pub sampler: Index<Sampler<E>>,
+    pub sampler: Index<Sampler<X>>,
 
     /// The index of the image used by this texture.
-    pub source: Index<image::Image<E>>,
+    pub source: Index<raw::image::Image<X>>,
 
     /// The target the texture should be bound to.
     #[serde(default)]
@@ -133,7 +134,7 @@ pub struct Texture<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::Texture,
+    pub extras: <X as Extras>::Texture,
 }
 
 /// Extension specific data for `Texture`.
@@ -146,9 +147,9 @@ pub struct TextureExtensions {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 /// Reference to a `Texture`.
-pub struct TextureInfo<E: Extras> {
+pub struct TextureInfo<X: Extras> {
     /// The index of the texture.
-    pub index: Index<Texture<E>>,
+    pub index: Index<Texture<X>>,
 
     /// The set index of the texture's `TEXCOORD` attribute.
     #[serde(default, rename = "texCoord")]
@@ -160,7 +161,7 @@ pub struct TextureInfo<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::TextureInfo,
+    pub extras: <X as Extras>::TextureInfo,
 }
 
 /// Extension specific data for `TextureInfo`.
@@ -170,14 +171,10 @@ pub struct TextureInfoExtensions {
     _allow_extra_fields: (),
 }
 
-impl<E: Extras> Texture<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        _warn: Fw,
-        mut err: Fe,
-    ) {
+impl<X: Extras> Validate<X> for Texture<X> {
+    fn validate<W, E>(&self, root: &Root<X>, _warn: W, mut err: E)
+        where W: FnMut(&str, &str), E: FnMut(&str, &str)
+    {
         if let Err(_) = root.try_get(&self.sampler) {
             err("sampler", "Index out of range");
         }

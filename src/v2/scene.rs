@@ -7,162 +7,142 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use v2::{camera, mesh, scene, skin, Extras, Index, Root};
+use v2::{raw, Extras, Root};
+use v2::mesh::Mesh;
 
-/// A node in the node hierarchy.
-///
-/// * When the node contains `skin`, all `mesh::Primitive`s must contain `"JOINT"`
-///   and `"WEIGHT"` attributes.
-/// * A node can have either a `matrix` or any combination of
-///   `translation`/`rotation`/`scale` (TRS) properties.
-/// * TRS properties are converted to matrices and postmultiplied in the
-///   `T * R * S` order to compose the transformation matrix; first the scale is
-///   applied to the vertices, then the rotation, and then the translation.
-/// * If none are provided, the transform is the identity.
-/// * When a node is targeted for animation (referenced by an
-///   `animation::ChannelTarget`), only TRS properties may be present and `matrix`
-///   will not be present.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Node<E: Extras> {
-    /// The camera referenced by this node.
-    pub camera: Option<Index<camera::Camera<E>>>,
-    
-    /// The child nodes belonging to this node in the node heirarchy.
-    #[serde(default)]
-    pub children: Vec<Index<scene::Node<E>>>,
-    
-    /// Extension specific data.
-    #[serde(default)]
-    pub extensions: NodeExtensions,
-    
-    /// Optional application specific data.
-    #[serde(default)]
-    pub extras: <E as Extras>::Node,
-    
-    /// 4x4 column-major transformation matrix.
-    #[serde(default = "node_matrix_default")]
-    pub matrix: [[f32; 4]; 4],
-    
-    /// The `Mesh` in this node.
-    pub mesh: Option<Index<mesh::Mesh<E>>>,
-    
-    /// Optional user-defined name for this object.
-    pub name: Option<String>,
-    
-    /// The node's unit quaternion rotation `[x, y, z, w]`.
-    #[serde(default = "node_rotation_default")]
-    pub rotation: [f32; 4],
-    
-    #[serde(default = "node_scale_default")]
-    /// The node's non-uniform scale.
-    pub scale: [f32; 3],
-    
-    #[serde(default)]
-    /// The node's translation.
-    pub translation: [f32; 3],
-    
-    /// The index of the skin referenced by this node.
-    pub skin: Option<Index<skin::Skin<E>>>,
-    
-    /// The weights of the instantiated morph target.
-    ///
-    /// The number of elements must match the number of morph targets used by the
-    /// mesh.
-    pub weights: Option<Vec<f32>>,
+/// An `Iterator` that visits the children of a node.
+#[derive(Debug)]
+pub struct IterChildNodes<'a, X: 'a + Extras> {
+    index: usize,
+    parent: &'a Node<'a, X>,
+    root: &'a Root<X>,
 }
 
-/// Extension specific data for `Node`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct NodeExtensions {
-    #[serde(default)]
-    _allow_extra_fields: (),
+/// An `Iterator` that visits every node in a scene.
+#[derive(Debug)]
+pub struct IterNodes<'a, X: 'a + Extras> {
+    index: usize,
+    root: &'a Root<X>,
+    scene: &'a Scene<'a, X>,
 }
 
-fn node_matrix_default() -> [[f32; 4]; 4] {
-    [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+/// ![Node](../scene/struct.Node.html)
+#[derive(Debug)]
+pub struct Node<'a, X: 'a + Extras> {
+    parent: Option<&'a Node<'a, X>>,
+    raw: &'a raw::scene::Node<X>,
+    root: &'a Root<X>,
 }
 
-fn node_rotation_default() -> [f32; 4] {
-    [0.0, 0.0, 0.0, 1.0]
+/// The root nodes of a scene.
+#[derive(Debug)]
+pub struct Scene<'a, X: 'a + Extras> {
+    root: &'a Root<X>,
+    raw: &'a raw::scene::Scene<X>,
 }
 
-fn node_scale_default() -> [f32; 3] {
-    [1.0, 1.0, 1.0]
-}
-
-/// The root `Node`s of a scene.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Scene<E: Extras> {
-    /// Extension specific data.
-    #[serde(default)]
-    pub extensions: SceneExtensions,
+impl<'a, X: 'a + Extras> Node<'a, X> {
+    /// Returns the camera referenced by this node.
+    pub fn camera(&'a self) -> Option<&'a raw::camera::Camera<X>> {
+        self.raw.camera.as_ref().map(|index| self.root.get(index))
+    }
     
-    /// Optional application specific data.
-    #[serde(default)]
-    pub extras: <E as Extras>::Scene,
-    
-    /// Optional user-defined name for this object.
-    pub name: Option<String>,
-    
-    /// The indices of each root `Node`.
-    #[serde(default)]
-    pub nodes: Vec<Index<Node<E>>>,
-}
+    /// Returns the mesh referenced by this node.
+    pub fn mesh(&'a self) -> Option<Mesh<X>> {
+        self.raw.mesh
+            .as_ref()
+            .map(|index| Mesh::from_raw(self.root, self.root.get(index)))
+    }
 
-/// Extension specific data for `Scene`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct SceneExtensions {
-    #[serde(default)]
-    _allow_extra_fields: (),
-}
-
-impl<E: Extras> Node<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        _warn: Fw,
-        mut err: Fe,
-    ) {
-        if let Some(ref camera) = self.camera {
-            if let Err(_) = root.try_get(&camera) {
-                err("camera", "Index out of range");
-            }
-            for (i, node) in self.children.iter().enumerate() {
-                if let Err(_) = root.try_get(node) {
-                    let source = format!("children[{}]", i);
-                    err(&source, "Index out of range");
-                }
-            }
+    pub fn from_raw(
+        root: &'a Root<X>,
+        raw: &'a raw::scene::Node<X>,
+    ) -> Self {
+        Self {
+            raw: raw,
+            parent: None,
+            root: root,
         }
-        if let Some(ref mesh) = self.mesh {
-            if let Err(_) = root.try_get(mesh) {
-                err("mesh", "Index out of range");
-            }
+    }
+
+    pub fn from_raw_with_parent(
+        root: &'a Root<X>,
+        raw: &'a raw::scene::Node<X>,
+        parent: &'a Node<'a, X>,
+    ) -> Self {
+        Self {
+            raw: raw,
+            parent: Some(parent),
+            root: root,
         }
-        if let Some(ref skin) = self.skin {
-            if let Err(_) = root.try_get(skin) {
-                err("skin", "Index out of range");
-            }
+    }
+
+    /// Returns this node's parent node.
+    pub fn parent(&'a self) -> Option<&'a Node<X>> {
+        self.parent
+    }
+
+    /// Returns an `Iterator` that visits every child node.
+    pub fn iter_child_nodes(&'a self) -> IterChildNodes<'a, X> {
+        IterChildNodes {
+            index: 0,
+            parent: self,
+            root: self.root,            
         }
     }
 }
 
-impl<E: Extras> Scene<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        _warn: Fw,
-        mut err: Fe,
-    ) {
-        for (i, node) in self.nodes.iter().enumerate() {
-            if let Err(_) = root.try_get(node) {
-                let source = format!("node[{}]", i);
-                err(&source, "Index out of range");
-            }
+impl<'a, X: 'a + Extras> Scene<'a, X> {
+    /// Returns an `Iterator` that iters the root nodes in a scene.
+    pub fn iter_nodes(&'a self) -> IterNodes<'a, X> {
+        IterNodes {
+            index: 0,
+            root: self.root,
+            scene: self,
+        }
+    }
+
+    pub fn from_raw(
+        root: &'a Root<X>,
+        raw: &'a raw::scene::Scene<X>,
+    ) -> Self {
+        Self {
+            root: root,
+            raw: raw,
         }
     }
 }
+
+impl<'a, X: 'a + Extras> Iterator for IterChildNodes<'a, X> {
+    type Item = Node<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.parent.raw.children.len() {
+            self.index += 1;
+            let node = Node::from_raw_with_parent(
+                self.root,
+                self.root.get(&self.parent.raw.children[self.index - 1]),
+                self.parent,
+            );
+            Some(node)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterNodes<'a, X> {
+    type Item = Node<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.scene.raw.nodes.len() {
+            self.index += 1;
+            let node = Node::from_raw(
+                self.root,
+                self.root.get(&self.scene.raw.nodes[self.index - 1]),
+            );
+            Some(node)
+        } else {
+            None
+        }
+    }
+}
+

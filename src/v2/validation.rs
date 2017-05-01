@@ -8,6 +8,14 @@
 // except according to those terms.
 
 use std;
+use v2::{Extras, Root};
+
+/// Trait for validating glTF data post-deserialization.
+pub trait Validate<X: Extras> {
+    /// Validates the data.
+    fn validate<W, E>(&self, root: &Root<X>, warn: W, err: E)
+        where W: FnMut(&str, &str), E: FnMut(&str, &str);
+}
 
 /// Source and description of malformed glTF.
 #[derive(Clone, Debug)]

@@ -9,7 +9,7 @@
 
 use serde_json;
 use std;
-use v2::{self, Extras, Gltf, Root};
+use v2::{raw, validation, Extras, Root, Validate};
 
 /// Error encountered when importing a glTF 2.0 asset.
 #[derive(Debug)]
@@ -33,45 +33,54 @@ pub enum ImportError {
     IncompatibleVersion(String),
 
     /// Error encountered when validating glTF.
-    Validation(Vec<v2::validation::Error>),
+    Validation(Vec<validation::Error>),
 }
 
 /// Imports a standard (plain text JSON) glTF 2.0 asset.
-fn import_standard_gltf<E>(data: Vec<u8>) -> Result<Root<E>, ImportError>
-    where E: Extras
-{
-    let root: Root<E> = serde_json::from_slice(&data)?;
-
-    Ok(root)
+fn import_standard_gltf<'a, X: 'a + Extras>(
+    data: Vec<u8>,
+) -> Result<raw::root::Root<X>, ImportError> {
+    let raw: raw::root::Root<X> = serde_json::from_slice(&data)?;
+    Ok(raw)
 }
 
 /// Imports a glTF 2.0 asset.
-pub fn import<P, E>(path: P) -> Result<Gltf<E>, ImportError>
-    where P: AsRef<std::path::Path>,
-          E: Extras
+pub fn import<P, X>(path: P) -> Result<Root<X>, ImportError>
+    where P: AsRef<std::path::Path>, X: Extras
 {
     use std::io::Read;
     use self::ImportError::*;
 
-    let path_buf = path.as_ref().to_owned();
-    let mut file = std::fs::File::open(&path_buf)?;
+    let mut file = std::fs::File::open(&path)?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
 
-    let root: Root<E> = if buffer.starts_with(b"glTF") {
+    let raw: raw::root::Root<X> = if buffer.starts_with(b"glTF") {
         return Err(ExtensionUnsupported("Binary glTF 2.0".to_string()));
     } else {
         file.read_to_end(&mut buffer)?;
         import_standard_gltf(buffer)?
     };
 
-    if let Err(errs) = root.validate() {
-        Err(Validation(errs))
+    let root = Root::from_raw(raw, path)?;
+    let mut errs = Vec::new();
+    {
+        let warn_fn = |source: &str, description: &str| {
+            // TODO: Do something more useful with this data.
+            println!("warning: {}: {}", source, description);
+        };
+        let err_fn = |source: &str, description: &str| {
+            errs.push(validation::Error {
+                source: source.to_string(),
+                description: description.to_string(),
+            });
+        };
+        root.validate(&root, warn_fn, err_fn);
+    }
+    if errs.is_empty() {
+        Ok(root)
     } else {
-        Ok(Gltf {
-            path: path_buf,
-            root: root,
-        })
+        Err(Validation(errs))
     }
 }
 

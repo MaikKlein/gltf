@@ -7,323 +7,372 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std;
-use std::collections::HashMap;
-use v2::{accessor, material, Extras, Index, Root};
+use std::collections::hash_map::Iter as HashMapIter;
+use std::slice::Iter as SliceIter;
+use v2::{accessor, raw, Extras, Root};
 
-enum_number! {
-    Mode {
-        Points = 0,
-        Lines = 1,
-        LineLoop = 2,
-        LineStrip = 3,
-        Triangles = 4,
-        TriangleStrip = 5,
-        TriangleFan = 6,
-    }
+/// XYZ vertex normals of type `[f32; 3]`.
+pub type Normals<'a> = accessor::Iter<'a, [f32; 3]>;
+
+/// XYZ vertex positions of type `[f32; 3]`.
+pub type Positions<'a> = accessor::Iter<'a, [f32; 3]>;
+
+/// XYZW vertex tangents of type `[f32; 4]` where the `w` component is a
+/// sign value (-1 or +1) indicating the handedness of the tangent basis.
+pub type Tangents<'a> = accessor::Iter<'a, [f32; 4]>;
+
+/// Vertex attribute data.
+pub enum Attribute<'a, X: 'a + Extras> {
+    /// Vertex colors.
+    Colors(u32, Colors<'a>),
+
+    /// Untyped user-defined vertex attributes.
+    Extras(&'a str, accessor::Accessor<'a, X>),
+
+    /// Vertex joints.
+    /// Refer to the documentation on morph targets and skins for more
+    /// information.
+    Joints(u32, Joints<'a>),
+
+    /// XYZ vertex positions of type `[f32; 3]`.
+    Positions(Positions<'a>),
+
+    /// XYZ vertex normals of type `[f32; 3]`.
+    Normals(Normals<'a>),
+
+    /// XYZW vertex tangents of type `[f32; 4]` where the `w` component is a
+    /// sign value (-1 or +1) indicating the handedness of the tangent basis.
+    Tangents(Tangents<'a>),
+
+    /// UV texture co-ordinates.
+    TexCoords(u32, TexCoords<'a>),
+
+    /// Weights.
+    /// Refer to the documentation on morph targets for more information.
+    Weights(u32, Weights<'a>),
 }
 
-/// Extension specific data for `Mesh`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct MeshExtensions {
-    #[serde(default)]
-    _allow_extra_fields: (),
+/// Vertex colors.
+#[derive(Clone, Debug)]
+pub enum Colors<'a> {
+    /// RGB vertex color of type `[u8; 3]>`.
+    RgbU8(accessor::Iter<'a, [u8; 3]>),
+
+    /// RGBA vertex color of type `[u8; 4]>`.
+    RgbaU8(accessor::Iter<'a, [u8; 4]>),
+
+    /// RGB vertex color of type `[u16; 3]>`.
+    RgbU16(accessor::Iter<'a, [u16; 3]>),
+
+    /// RGBA vertex color of type `[u16; 4]>`.
+    RgbaU16(accessor::Iter<'a, [u16; 4]>),
+
+    /// RGB vertex color of type `[f32; 3]`.
+    RgbF32(accessor::Iter<'a, [f32; 3]>),
+
+    /// RGBA vertex color of type `[f32; 4]`.
+    RgbaF32(accessor::Iter<'a, [f32; 4]>),
+}
+
+/// Index data.
+pub enum Indices<'a> {
+    /// Index data of type U8
+    U8(accessor::Iter<'a, u8>),
+    /// Index data of type U16
+    U16(accessor::Iter<'a, u16>),
+    /// Index data of type U32
+    U32(accessor::Iter<'a, u32>),
+}
+
+/// An `Iterator` that visits the vertex attributes of a mesh primitive.
+pub struct IterAttributes<'a, X: 'a + Extras> {
+    iter: HashMapIter<'a, raw::mesh::Semantic, raw::Index<raw::accessor::Accessor<X>>>,
+    root: &'a Root<X>,
+}
+
+/// An `Iterator that visits every primitive in a mesh.
+pub struct IterPrimitives<'a, X: 'a + Extras> {
+    iter: SliceIter<'a, raw::mesh::Primitive<X>>,
+    root: &'a Root<X>,
+}
+
+/// Vertex joints.
+/// Refer to the documentation on morph targets and skins for more
+/// information.
+#[derive(Clone, Debug)]
+pub enum Joints<'a> {
+    /// Joints of type `[u8; 4]`.
+    /// Refer to the documentation on morph targets and skins for more
+    /// information.
+    U8(accessor::Iter<'a, [u8; 4]>),
+    
+    /// Joints of type `[u16; 4]`.
+    /// Refer to the documentation on morph targets and skins for more
+    /// information.
+    U16(accessor::Iter<'a, [u16; 4]>),
 }
 
 /// A set of primitives to be rendered.
 ///
 /// A node can contain one or more meshes and its transform places the meshes in
 /// the scene.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Mesh<E: Extras> {
-    /// Extension specific data.
-    #[serde(default)]
-    pub extensions: MeshExtensions,
-    
-    /// Optional application specific data.
-    #[serde(default)]
-    pub extras: <E as Extras>::Mesh,
-    
-    /// Optional user-defined name for this object.
-    pub name: Option<String>,
-    
-    /// Defines the geometry to be renderered with a material.
-    pub primitives: Vec<Primitive<E>>,
-
-    /// Defines the weights to be applied to the morph targets.
-    #[serde(default)]
-    pub weights: Vec<f32>,
+#[derive(Debug)]
+pub struct Mesh<'a, X: 'a + Extras> {
+    raw: &'a raw::mesh::Mesh<X>,
+    root: &'a Root<X>,
 }
 
-/// Geometry to be rendered with the given material.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Primitive<E: Extras> {
-    /// Maps attribute semantic names to the `Accessor`s containing the
-    /// corresponding attribute data.
-    #[serde(default)]
-    pub attributes: HashMap<Semantic, Index<accessor::Accessor<E>>>,
-    
-    /// Extension specific data.
-    #[serde(default)]
-    pub extensions: PrimitiveExtensions,
-    
-    /// Optional application specific data.
-    #[serde(default)]
-    pub extras: <E as Extras>::MeshPrimitive,
-    
-    /// The `Accessor` that contains the indices.
-    pub indices: Option<Index<accessor::Accessor<E>>>,
-    
-    /// The material to apply to this primitive when rendering.
-    pub material: Index<material::Material<E>>,
-    
-    /// The type of primitives to render.
-    #[serde(default)]
-    pub mode: Mode,
-    
-    /// Maps attribute names (only `"POSITION"`, `"NORMAL"`, and `"TANGENT"`) to
-    /// their deviations in the morph target.
-    #[serde(default)]
-    pub targets: Vec<HashMap<Semantic, Index<accessor::Accessor<E>>>>,
+#[derive(Debug)]
+pub struct Primitive<'a, X: 'a + Extras> {
+    raw: &'a raw::mesh::Primitive<X>,
+    root: &'a Root<X>,
 }
 
-/// Extension specific data for `Primitive`.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct PrimitiveExtensions {
-    #[serde(default)]
-    _allow_extra_fields: (),
+/// UV texture co-ordinates.
+#[derive(Clone, Debug)]
+pub enum TexCoords<'a> {
+    /// UV texture co-ordinates of type `[f32; 2]`.
+    F32(accessor::Iter<'a, [f32; 2]>),
+
+    /// UV texture co-ordinates of type `[u8; 2]>`.
+    U8(accessor::Iter<'a, [u8; 2]>),
+
+    /// UV texture co-ordinates of type `[u16; 2]>`.
+    U16(accessor::Iter<'a, [u16; 2]>),
 }
 
-/// Vertex attribute semantic name.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum Semantic {
-    /// RGB(A) vertex color.
-    Color(u32),
-    
-    /// User-defined vertex attribute.
-    Extra(String),
+/// Weights,
+/// Refer to the documentation on morph targets for more information.
+#[derive(Clone, Debug)]
+pub enum Weights<'a> {
+    /// Weights of type `[f32; 4]`.
+    F32(accessor::Iter<'a, [f32; 4]>),
 
-    /// Joints
-    Joint(u32),
+    /// Weights of type `[u8; 4]`.
+    U8(accessor::Iter<'a, [u8; 4]>),
 
-    /// XYZ vertex normal.
-    Normal,
-
-    /// XYZ vertex position.
-    Position,
-
-    /// XYZW vertex tangent, where W determines the handedness of the tangent.
-    Tangent,
-
-    /// UV texture co-ordinate.
-    TexCoord(u32),
-
-    /// Weight.
-    Weight(u32),
+    /// Weights of type `[u16; 4]`.
+    U16(accessor::Iter<'a, [u16; 4]>),
 }
 
-impl<E: Extras> Mesh<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        mut warn: Fw,
-        mut err: Fe,
-    ) {
-        for (i, primitive) in self.primitives.iter().enumerate() {
-            let warn_fn = |source: &str, description: &str| {
-                let source = format!("primitive[{}].{}", i, source);
-                warn(&source, description);
-            };
-            let err_fn = |source: &str, description: &str| {
-                let source = format!("primitive[{}].{}", i, source);
-                err(&source, description);
-            };
-            primitive.validate(root, warn_fn, err_fn);
+impl<'a, X: 'a + Extras> Mesh<'a, X> {
+    /// Returns an `Iterator` that visits every primitive.
+    pub fn iter_primitives(&'a self) -> IterPrimitives<'a, X> {
+        IterPrimitives {
+            iter: self.raw.primitives.iter(),
+            root: self.root,
+        }
+    }
+
+    pub fn from_raw(
+        root: &'a Root<X>,
+        raw: &'a raw::mesh::Mesh<X>,
+    ) -> Self {
+        Self {
+            raw: raw,
+            root: root,
         }
     }
 }
 
-impl<E: Extras> Primitive<E> {  
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        mut warn: Fw,
-        mut err: Fe,
-    ) {
-        use self::Semantic::*;
-        use v2::accessor::ComponentType::*;
-        use v2::accessor::Kind::*;
-        for (semantic, accessor_index) in &self.attributes {
-            let source = format!("attribute[{}]", semantic.to_string());
-            let accessor = root.try_get(accessor_index);
-            if accessor.is_err() {
-                err(&source, "Index out of range");
-                return;
-            }
-            let accessor = accessor.unwrap();
-            let ty = (accessor.component_type, accessor.kind);
-            match semantic {
-                &Color(_) => match ty {
-                    (U8, Vec3)
-                        | (U8, Vec4)
-                        | (U16, Vec3)
-                        | (U16, Vec4)
-                        | (F32, Vec3)
-                        | (F32, Vec4) => {},
-                    _ => err(&source, "Invalid accessor for attribute COLOR_*"),
-                },
-                &Extra(ref name) if !name.starts_with("_") => {
-                    warn(&source, "User defined attributes should start with an underscore (`_`)");
-                },
-                &Extra(_) => {},
-                &Joint(_) => match ty {
-                    (U8, Vec4) | (U16, Vec4) => {},
-                    _ => err(&source, "Invalid accessor for attribute JOINT_*"),
-                },
-                &Normal => match ty {
-                    (F32, Vec3) => {},
-                    _ => err(&source, "Invalid accessor for attribute NORMAL"),
-                },
-                &Position => match ty {
-                    (F32, Vec3) => {},
-                    _ => err(&source, "Invalid accessor for attribute POSITION"),
-                },
-                &Tangent => match ty {
-                    (F32, Vec4) => {},
-                    _ => err(&source, "Invalid accessor for attribute TANGENT"),
-                },
-                &TexCoord(_) => match ty {
-                    (U8, Vec2) | (U16, Vec2) | (F32, Vec2) => {},
-                    _ => err(&source, "Invalid accessor for attribute TEXCOORD_*"),
-                },
-                &Weight(_) => match ty {
-                    (U8, Vec4) | (U16, Vec4) => {},
-                    _ => err(&source, "Invalid accessor for attribute WEIGHT_*"),
-                },
+impl<'a, X: 'a + Extras> Primitive<'a, X> {
+    /// Returns the vertex colors of the given set.
+    pub fn colors(&'a self, set: u32) -> Option<Colors<'a>> {
+        for attribute in self.iter_attributes() {
+            if let Attribute::Colors(set_, colors) = attribute {
+                if set_ == set {
+                    return Some(colors);
+                }
             }
         }
+        None
+    }
 
-        if let Some(indices) = self.indices.as_ref() {
-            match root.try_get(indices) {
-                Ok(accessor) => {
-                    let ty = (accessor.component_type, accessor.kind);
-                    match ty {
-                        (U8, Scalar) | (U16, Scalar) | (U32, Scalar) => {},
-                        _ => err("indices", "Invalid accessor"),
+    /// Returns an `Iterator` over the primitive vertex attributes.
+    pub fn iter_attributes(&'a self) -> IterAttributes<'a, X> {
+        IterAttributes {
+            iter: self.raw.attributes.iter(),
+            root: self.root,
+        }
+    }
+
+    /// Returns the referenced index buffer view.
+    pub fn indices(&'a self) -> Option<Indices<'a>> {
+        use self::raw::accessor::ComponentType::*;
+        self.raw.indices
+            .as_ref()
+            .map(|index| {
+                let accessor = accessor::Accessor::from_raw(
+                    self.root,
+                    self.root.get(index),
+                );
+                unsafe {
+                    match accessor.ty() {
+                        U8 => Indices::U8(accessor.iter()),
+                        U16 => Indices::U16(accessor.iter()),
+                        U32 => Indices::U32(accessor.iter()),
+                        _ => unreachable!(),
                     }
                 }
-                Err(_) => err("indices", "Index out of range"),
+            })
+    }
+
+    pub fn from_raw(
+        root: &'a Root<X>,
+        raw: &'a raw::mesh::Primitive<X>,
+    ) -> Self {
+        Self {
+            raw: raw,
+            root: root,
+        }
+    }
+
+    /// Returns the vertex normals.
+    pub fn normals(&'a self) -> Option<Normals<'a>> {
+        for attribute in self.iter_attributes() {
+            if let Attribute::Normals(normals) = attribute {
+                return Some(normals);
             }
         }
+        None
+    }
 
-        if let Err(_) = root.try_get(&self.material) {
-            err("material", "Index out of range");
-        }
-        for (i, map) in self.targets.iter().enumerate() {
-            for (semantic, accessor) in map {
-                let source = format!("targets[{}][{}]", i, semantic.to_string());
-                if let Err(_) = root.try_get(accessor) {
-                    err(&source, "Index out of range");
-                }
-                match semantic {
-                    &Normal | &Position | &Tangent => {},
-                    _ => err(&source, "Invalid attribute for Morph target"),
-                }
+    /// Returns the vertex positions.
+    pub fn positions(&'a self) -> Option<Positions<'a>> {
+        for attribute in self.iter_attributes() {
+            if let Attribute::Positions(positions) = attribute {
+                return Some(positions);
             }
         }
+        None
     }
-}
 
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Triangles
-    }
-}
-
-impl std::str::FromStr for Semantic {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use self::Semantic::*;
-        let semantic = match s {
-            "NORMAL" => Normal,
-            "POSITION" => Position,
-            "TANGENT" => Tangent,
-            _ if s.starts_with("COLOR_") => {
-                let set = s["COLOR_".len()..].parse().map_err(|_| ())?;
-                Color(set)
-            },
-            _ if s.starts_with("TEXCOORD_") => {
-                let set = s["TEXCOORD_".len()..].parse().map_err(|_| ())?;
-                TexCoord(set)
-            },
-            _ if s.starts_with("JOINT_") => {
-                let set = s["JOINT_".len()..].parse().map_err(|_| ())?;
-                Joint(set)
-            },
-            _ if s.starts_with("WEIGHT_") => {
-                let set = s["WEIGHT_".len()..].parse().map_err(|_| ())?;
-                Weight(set)
-            },
-            other => Extra(other.to_string()),
-        };
-        Ok(semantic)
-    }
-}
-
-impl std::string::ToString for Semantic {
-    fn to_string(&self) -> String {
-        use self::Semantic::*;
-        match self {
-            &Color(set) => format!("COLOR_{}", set),
-            &Extra(ref semantic) => semantic.clone(),
-            &Joint(set) => format!("JOINT_{}", set),
-            &Normal => "NORMAL".to_string(),
-            &Position => "POSITION".to_string(),
-            &Tangent => "TANGENT".to_string(),
-            &TexCoord(set) => format!("TEXCOORD_{}", set),
-            &Weight(set) => format!("WEIGHT_{}", set),
-        }
-    }
-}
-
-impl ::serde::de::Deserialize for Semantic {
-    fn deserialize<D>(deserializer: D) -> Result<Semantic, D::Error>
-        where D: ::serde::de::Deserializer
-    {
-        struct Visitor;              
-        impl ::serde::de::Visitor for Visitor {
-            type Value = Semantic;
-            fn expecting(&self, formatter: &mut ::std::fmt::Formatter)
-                         -> ::std::fmt::Result
-            {
-                let _ = formatter.write_str(concat!("<semantic>[_set]\n"))?;
-                Ok(())
-            }
-
-            fn visit_str<E>(self, value: &str)-> Result<Self::Value, E>
-                where E: ::serde::de::Error
-            {
-                match value.parse() {
-                    Ok(semantic) => Ok(semantic),
-                    Err(()) => {
-                        let msg = format!("invalid semantic \"{}\"", value);
-                        Err(E::custom(msg))
-                    },
+    /// Returns the UV texture co-ordinates of the given set.
+    pub fn tex_coords(&'a self, set: u32) -> Option<TexCoords<'a>> {
+        for attribute in self.iter_attributes() {
+            if let Attribute::TexCoords(set_, tex_coords) = attribute {
+                if set_ == set {
+                    return Some(tex_coords);
                 }
             }
         }
-        deserializer.deserialize_str(Visitor)
+        None
     }
 }
 
-impl ::serde::ser::Serialize for Semantic {
-    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-        where S: ::serde::ser::Serializer
-    {
-        s.serialize_str(&self.to_string())
+impl<'a, X: 'a + Extras> Iterator for IterAttributes<'a, X> {
+    type Item = Attribute<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        use self::raw::accessor::ComponentType::*;
+        use self::raw::accessor::Kind::*;
+        use self::raw::mesh::*;
+        self.iter.next().map(|(semantic, index)| {
+            let accessor = accessor::Accessor::from_raw(
+                self.root,
+                self.root.get(index),
+            );
+            match (semantic, accessor.ty(), accessor.kind()) {
+                (&Semantic::Color(set), F32, Vec3) => unsafe {
+                    Attribute::Colors(
+                        set,
+                        Colors::RgbF32(accessor.iter()),
+                    )
+                },
+                (&Semantic::Color(set), F32, Vec4) => unsafe {
+                    Attribute::Colors(
+                        set,
+                        Colors::RgbaF32(accessor.iter()),
+                    )
+                },
+                (&Semantic::Color(set), U8, Vec3) => unsafe {
+                    Attribute::Colors(
+                        set,
+                        Colors::RgbU8(accessor.iter()),
+                    )
+                },
+                (&Semantic::Color(set), U8, Vec4) => unsafe {
+                    Attribute::Colors(
+                        set,
+                        Colors::RgbaU8(accessor.iter()),
+                    )
+                },
+                (&Semantic::Color(set), U16, Vec3) => unsafe {
+                    Attribute::Colors(
+                        set,
+                        Colors::RgbU16(accessor.iter()),
+                    )
+                },
+                (&Semantic::Color(set), U16, Vec4) => unsafe {
+                    Attribute::Colors(
+                        set,
+                        Colors::RgbaU16(accessor.iter()),
+                    )
+                },
+                (&Semantic::Joint(set), U8, Vec4) => unsafe {
+                    Attribute::Joints(
+                        set,
+                        Joints::U8(accessor.iter()),
+                    )
+                },
+                (&Semantic::Joint(set), U16, Vec4) => unsafe {
+                    Attribute::Joints(
+                        set,
+                        Joints::U16(accessor.iter()),
+                    )
+                },
+                (&Semantic::Normal, F32, Vec3) => unsafe {
+                    Attribute::Normals(accessor.iter())
+                },
+                (&Semantic::Position, F32, Vec3) => unsafe {
+                    Attribute::Positions(accessor.iter())
+                },
+                (&Semantic::Tangent, F32, Vec3) => unsafe {
+                    Attribute::Tangents(accessor.iter())
+                },
+                (&Semantic::TexCoord(set), F32, Vec2) => unsafe {
+                    Attribute::TexCoords(
+                        set,
+                        TexCoords::F32(accessor.iter()),
+                    )
+                },
+                (&Semantic::TexCoord(set), U8, Vec2) => unsafe {
+                    Attribute::TexCoords(
+                        set,
+                        TexCoords::U8(accessor.iter()),
+                    )
+                },
+                (&Semantic::TexCoord(set), U16, Vec2) => unsafe {
+                    Attribute::TexCoords(
+                        set,
+                        TexCoords::U16(accessor.iter()),
+                    )
+                },
+                (&Semantic::Weight(set), U8, Vec4) => unsafe {
+                    Attribute::Weights(
+                        set,
+                        Weights::U8(accessor.iter()),
+                    )
+                },
+                (&Semantic::Weight(set), U16, Vec4) => unsafe {
+                    Attribute::Weights(
+                        set,
+                        Weights::U16(accessor.iter()),
+                    )
+                },
+                (&Semantic::Extra(ref name), _, _) => {
+                    Attribute::Extras(name, accessor)
+                },
+                _ => unreachable!(),
+            }
+        })
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterPrimitives<'a, X> {
+    type Item = Primitive<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|primitive| {
+            Primitive::from_raw(self.root, primitive)
+        })                    
     }
 }

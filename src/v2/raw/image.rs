@@ -7,15 +7,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use v2::{buffer, Extras, Index, Root};
+use v2::{raw, Extras, Root, Validate};
+use v2::raw::root::Index;
 
 /// Image data used to create a texture.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Image<E: Extras> {
+pub struct Image<X: Extras> {
     /// The `BufferView` that contains the image if `uri` is `None`.
     #[serde(rename = "bufferView")]
-    pub buffer_view: Option<Index<buffer::BufferView<E>>>,
+    pub buffer_view: Option<Index<raw::buffer::BufferView<X>>>,
 
     /// The image's MIME type.
     #[serde(rename = "mimeType")]
@@ -38,7 +39,7 @@ pub struct Image<E: Extras> {
 
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::Image,
+    pub extras: <X as Extras>::Image,
 }
 
 /// Extension specific data for `Image`.
@@ -48,17 +49,13 @@ pub struct ImageExtensions {
     _allow_extra_fields: (),
 }
 
-impl<E: Extras> Image<E> {
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        _warn: Fw,
-        mut err: Fe,
-    ) {
+impl<X: Extras> Validate<X> for Image<X> {
+    fn validate<W, E>(&self, root: &Root<X>, _warn: W, mut err: E)
+        where W: FnMut(&str, &str), E: FnMut(&str, &str)
+    {
         if let Some(ref buffer_view) = self.buffer_view {
             if let Err(_) = root.try_get(buffer_view) {
-                err("buffer_view", "Index out of range");
+                err("bufferView", "Index out of range");
             }
         }
     }

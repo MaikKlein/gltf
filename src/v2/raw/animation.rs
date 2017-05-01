@@ -7,7 +7,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use v2::{accessor, scene, Extras, Index, Root};
+use v2::{raw, Extras, Root, Validate};
+use v2::raw::root::Index;
 
 enum_string! {
     Interpolation {
@@ -28,27 +29,27 @@ enum_string! {
 /// A keyframe animation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Animation<E: Extras> {
+pub struct Animation<X: Extras> {
     /// Extension specific data.
     #[serde(default)]
     pub extensions: AnimationExtensions,
     
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::Animation,
+    pub extras: <X as Extras>::Animation,
     
     /// An array of channels, each of which targets an animation's sampler at a
     /// node's property.
     ///
     /// Different channels of the same animation must not have equal targets.
-    pub channels: Vec<Channel<E>>,
+    pub channels: Vec<Channel<X>>,
     
     /// Optional user-defined name for this object.
     pub name: Option<String>,
     
     /// An array of samplers that combine input and output accessors with an
     /// interpolation algorithm to define a keyframe graph (but not its target).
-    pub samplers: Vec<Sampler<E>>,
+    pub samplers: Vec<Sampler<X>>,
 }
 
 /// Extension specific data for `Animation`.
@@ -61,12 +62,12 @@ pub struct AnimationExtensions {
 /// Targets an animation's sampler at a node's property.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Channel<E: Extras> {
+pub struct Channel<X: Extras> {
     /// The index of the sampler used to compute the value for the target.
-    pub sampler: Index<Sampler<E>>,
+    pub sampler: Index<Sampler<X>>,
     
     /// The index of the node and TRS property to target.
-    pub target: Target<E>,
+    pub target: Target<X>,
     
     /// Extension specific data.
     #[serde(default)]
@@ -74,7 +75,7 @@ pub struct Channel<E: Extras> {
     
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::AnimationChannel,
+    pub extras: <X as Extras>::AnimationChannel,
 }
 
 /// Extension specific data for `Channel`.
@@ -87,17 +88,17 @@ pub struct ChannelExtensions {
 /// The index of the node and TRS property that an animation channel targets.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Target<E: Extras> {
+pub struct Target<X: Extras> {
     /// Extension specific data.
     #[serde(default)]
     pub extensions: TargetExtensions,
     
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::AnimationTarget,
+    pub extras: <X as Extras>::AnimationTarget,
     
     /// The index of the node to target.
-    pub node: Index<scene::Node<E>>,
+    pub node: Index<raw::scene::Node<X>>,
     
     /// The name of the node's TRS property to modify or the 'weights' of the
     /// morph targets it instantiates.
@@ -114,23 +115,23 @@ pub struct TargetExtensions {
 /// Defines a keyframe graph but not its target.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Sampler<E: Extras> {
+pub struct Sampler<X: Extras> {
     /// Extension specific data.
     #[serde(default)]
     pub extensions: SamplerExtensions,
     
     /// Optional application specific data.
     #[serde(default)]
-    pub extras: <E as Extras>::AnimationSampler,
+    pub extras: <X as Extras>::AnimationSampler,
     
     /// The index of the accessor containing keyframe input values (e.g. time).
-    pub input: Index<accessor::Accessor<E>>,
+    pub input: Index<raw::accessor::Accessor<X>>,
     
     /// The interpolation algorithm.
     pub interpolation: Interpolation,
     
     /// The index of an accessor containing keyframe output values.
-    pub output: Index<accessor::Accessor<E>>,
+    pub output: Index<raw::accessor::Accessor<X>>,
 }
 
 /// Extension specific data for `Sampler`.
@@ -140,29 +141,10 @@ pub struct SamplerExtensions {
     _allow_extra_fields: (),
 }
 
-impl<E: Extras> Animation<E> {
-    #[doc(hidden)]
-    pub fn range_check(&self, root: &Root<E>) -> Result<(), ()> {
-        for sampler in &self.samplers {
-            let _ = root.try_get(&sampler.input)?;
-            let _ = root.try_get(&sampler.output)?;
-        }
-        for channel in &self.channels {
-            let _ = root.try_get(&channel.target.node)?;
-            if channel.sampler.value() as usize >= self.samplers.len() {
-                return Err(());
-            }
-        }
-        Ok(())
-    }
-
-    #[doc(hidden)]
-    pub fn validate<Fw: FnMut(&str, &str), Fe: FnMut(&str, &str)>(
-        &self,
-        root: &Root<E>,
-        _warn: Fw,
-        mut err: Fe,
-    ) {
+impl<X: Extras> Validate<X> for Animation<X> {
+   fn validate<W, E>(&self, root: &Root<X>, _warn: W, mut err: E)
+        where W: FnMut(&str, &str), E: FnMut(&str, &str)
+    {
         for (i, sampler) in self.samplers.iter().enumerate() {
             if let Err(_) = root.try_get(&sampler.input) {
                 let source = format!("samplers[{}].input", i);
