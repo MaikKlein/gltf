@@ -8,9 +8,8 @@
 // except according to those terms.
 
 use std::{self, fs, io, path};
-use v2::{buffer, raw, scene, Extras, Validate};
+use v2::{raw, scene, Extras, Validate};
 use self::raw::root::{Get, Index, TryGet};
-use self::buffer::AlignedBufferData;
 use self::scene::Scene;
 
 /// An `Iterator` that visits every scene in a glTF asset.
@@ -27,7 +26,7 @@ pub struct IterScenes<'a, X: 'a + Extras> {
 #[derive(Debug)]
 pub struct Root<X: Extras> {
     /// Preloaded buffer data.
-    buffer_data: Vec<AlignedBufferData>,
+    buffer_data: Vec<Vec<u8>>,
 
     /// The path to the directory of the glTF source.
     ///
@@ -42,7 +41,7 @@ pub struct Root<X: Extras> {
 fn read_buffer_data<X, P>(
     buffer: &raw::buffer::Buffer<X>,
     gltf_origin: P,
-) -> io::Result<AlignedBufferData>
+) -> io::Result<Vec<u8>>
 where
     X: Extras,
     P: AsRef<path::Path>,
@@ -50,10 +49,11 @@ where
     use self::io::Read;
     let path = gltf_origin.as_ref().with_file_name(&buffer.uri);
     let mut file = fs::File::open(&path)?;
-    let mut data = unsafe {
-        AlignedBufferData::uninitialized(buffer.byte_length as usize)
-    };
-    file.read_exact(&mut data)?;
+    let mut data = Vec::with_capacity(buffer.byte_length as usize);
+    unsafe {
+        data.set_len(buffer.byte_length as usize);
+    }
+    file.read_exact(&mut data[..])?;
     Ok(data)
 }
 
@@ -64,10 +64,7 @@ impl<X: Extras> Root<X> {
     }
 
     /// Retrieves the pre-loaded buffer data described by the indexed buffer.
-    pub fn buffer_data(
-        &self,
-        index: &Index<raw::buffer::Buffer<X>>,
-    ) -> &AlignedBufferData {
+    pub fn buffer_data(&self, index: &Index<raw::buffer::Buffer<X>>) -> &[u8] {
         &self.buffer_data[index.value() as usize]
     }
 
