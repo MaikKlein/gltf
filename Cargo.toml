@@ -20,8 +20,6 @@ serde_derive = "0.9"
 serde_json = "0.9"
 
 [features]
-default = ["tree"]
-tree = []
 KHR_binary_glTF = []
 
 [[example]]
