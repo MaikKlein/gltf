@@ -7,16 +7,170 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use image_crate;
 use std::{self, fs, io, path};
-use v2::{raw, scene, Extras, Validate};
+use std::slice::Iter as SliceIter;
+use v2::{
+    accessor,
+    animation,
+    buffer,
+    camera,
+    image,
+    material,
+    raw,
+    texture,
+    scene,
+    skin,
+    Extras,
+    Validate
+};
+
 use self::raw::root::{Get, Index, TryGet};
-use self::scene::Scene;
+use self::accessor::Accessor;
+use self::animation::Animation;
+use self::buffer::{Buffer, BufferView};
+use self::camera::Camera;
+use self::image::Image;
+use self::material::Material;
+use self::scene::{Node, Scene};
+use self::skin::Skin;
+use self::texture::{Sampler, Texture};
+
+/// Data described by an `Image`.
+#[derive(Debug)]
+enum ImageData {
+    /// Index of the `BufferView` this image borrows from.
+    FromBufferView(usize),
+
+    /// The owned data this image describes.
+    Owned(Vec<u8>),
+}
+
+/// Return value of `Root::load()`.
+#[derive(Debug)]
+pub enum LoadError {
+    /// Image decoding error.
+    Image(image_crate::ImageError),
+
+    /// Standard input / output error.
+    Io(std::io::Error),
+}
+
+/// An `Iterator` that visits every accessor in a glTF asset.
+#[derive(Debug)]
+pub struct IterAccessors<'a, X: 'a + Extras> {
+    /// Internal accessor iterator.
+    iter: SliceIter<'a, raw::accessor::Accessor<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every animation in a glTF asset.
+#[derive(Debug)]
+pub struct IterAnimations<'a, X: 'a + Extras> {
+    /// Internal animation iterator.
+    iter: SliceIter<'a, raw::animation::Animation<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every pre-loaded buffer in a glTF asset.
+#[derive(Debug)]
+pub struct IterBuffers<'a, X: 'a + Extras> {
+    /// Index of next buffer in the iteration.
+    index: usize,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every pre-loaded buffer view in a glTF asset.
+#[derive(Debug)]
+pub struct IterBufferViews<'a, X: 'a + Extras> {
+    /// Internal buffer view iterator.
+    iter: SliceIter<'a, raw::buffer::BufferView<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every camera in a glTF asset.
+#[derive(Debug)]
+pub struct IterCameras<'a, X: 'a + Extras> {
+    /// Internal buffer view iterator.
+    iter: SliceIter<'a, raw::camera::Camera<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every pre-loaded image in a glTF asset.
+#[derive(Debug)]
+pub struct IterImages<'a, X: 'a + Extras> {
+    /// Index of next image in the iteration.
+    index: usize,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every material in a glTF asset.
+#[derive(Debug)]
+pub struct IterMaterials<'a, X: 'a + Extras> {
+    /// Internal material iterator.
+    iter: SliceIter<'a, raw::material::Material<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every node in a glTF asset.
+#[derive(Debug)]
+pub struct IterNodes<'a, X: 'a + Extras> {
+    /// Internal node iterator.
+    iter: SliceIter<'a, raw::scene::Node<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every sampler in a glTF asset.
+#[derive(Debug)]
+pub struct IterSamplers<'a, X: 'a + Extras> {
+    /// Internal sampler iterator.
+    iter: SliceIter<'a, raw::texture::Sampler<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
 
 /// An `Iterator` that visits every scene in a glTF asset.
 #[derive(Debug)]
 pub struct IterScenes<'a, X: 'a + Extras> {
     /// Internal scene iterator.
-    iter: std::slice::Iter<'a, raw::scene::Scene<X>>,
+    iter: SliceIter<'a, raw::scene::Scene<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every skin in a glTF asset.
+#[derive(Debug)]
+pub struct IterSkins<'a, X: 'a + Extras> {
+    /// Internal skin iterator.
+    iter: SliceIter<'a, raw::skin::Skin<X>>,
+
+    /// The internal root glTF object.
+    root: &'a Root<X>,
+}
+
+/// An `Iterator` that visits every texture in a glTF asset.
+#[derive(Debug)]
+pub struct IterTextures<'a, X: 'a + Extras> {
+    /// Internal texture iterator.
+    iter: SliceIter<'a, raw::texture::Texture<X>>,
 
     /// The internal root glTF object.
     root: &'a Root<X>,
@@ -25,9 +179,12 @@ pub struct IterScenes<'a, X: 'a + Extras> {
 /// The root object for a glTF asset.
 #[derive(Debug)]
 pub struct Root<X: Extras> {
-    /// Preloaded buffer data.
+    /// Pre-loaded buffer data.
     buffer_data: Vec<Vec<u8>>,
 
+    /// Pre-loaded image data.
+    image_data: Vec<ImageData>,
+    
     /// The path to the directory of the glTF source.
     ///
     /// Relative paths are determined from this location.
@@ -37,7 +194,7 @@ pub struct Root<X: Extras> {
     raw: raw::root::Root<X>,
 }
 
-/// Reads the entire contents of a `Buffer`.
+/// Reads the contents of a `Buffer`.
 fn read_buffer_data<X, P>(
     buffer: &raw::buffer::Buffer<X>,
     gltf_origin: P,
@@ -57,15 +214,52 @@ where
     Ok(data)
 }
 
+fn read_image_data<P1, P2>(
+    image_path: P1,
+    gltf_origin: P2,
+) -> image_crate::ImageResult<Vec<u8>>
+where
+    P1: AsRef<std::path::Path>,
+    P2: AsRef<std::path::Path>,
+{
+    let path = gltf_origin.as_ref().with_file_name(image_path.as_ref());
+    let image = image_crate::open(path)?;
+    Ok(image.raw_pixels())
+}
+
 impl<X: Extras> Root<X> {
     /// Returns the raw glTF data.
     pub fn as_raw(self) -> raw::root::Root<X> {
         self.raw
     }
 
+    /// Retrieves the pre-loaded buffer data at the given index.
+    fn buffer_data_impl(&self, index: usize) -> &[u8] {
+        self.buffer_data[index].as_slice()
+    }
+    
     /// Retrieves the pre-loaded buffer data described by the indexed buffer.
     pub fn buffer_data(&self, index: &Index<raw::buffer::Buffer<X>>) -> &[u8] {
-        &self.buffer_data[index.value() as usize]
+        self.buffer_data_impl(index.value() as usize)
+    }
+
+    /// Retrieves the pre-loaded image data at the given index.
+    fn image_data_impl(&self, index: usize) -> &[u8] {
+        match &self.image_data[index as usize] {
+            &ImageData::FromBufferView(buffer_view_index) => {
+                let buffer_view = &self.raw.buffer_views[buffer_view_index];
+                let buffer_data = &self.buffer_data(&buffer_view.buffer);
+                let begin = buffer_view.byte_offset as usize;
+                let end = begin + buffer_view.byte_length as usize;
+                &buffer_data[begin..end]
+            },
+            &ImageData::Owned(ref data) => data.as_slice(),
+        }  
+    }
+
+    /// Retrieves the pre-loaded image data described by the indexed image.
+    pub fn image_data(&self, index: &Index<raw::image::Image<X>>) -> &[u8] {
+        self.image_data_impl(index.value() as usize)
     }
 
     /// Returns the extensions referenced in this .gltf file.
@@ -78,10 +272,9 @@ impl<X: Extras> Root<X> {
         &self.raw.extensions_required
     }
 
-    /// Constructor for the `Root` object.
-    ///
+    /// Constructor for the `Root` object.    ///
     /// It is recommended to use `import()` instead.
-    pub fn from_raw<P>(raw: raw::root::Root<X>, path: P) -> io::Result<Self>
+    pub fn load<P>(raw: raw::root::Root<X>, path: P) -> Result<Self, LoadError>
         where P: AsRef<path::Path>
     {
         let mut preloaded_buffer_data = Vec::new();
@@ -89,17 +282,118 @@ impl<X: Extras> Root<X> {
             let buffer_data = read_buffer_data(buffer, &path)?;
             preloaded_buffer_data.push(buffer_data);
         };
+        let mut preloaded_image_data = Vec::new();
+        for image in raw.images.iter() {
+            let image_data = if let Some(index) = image.buffer_view.as_ref() {
+                ImageData::FromBufferView(index.value() as usize)
+            } else {
+                let owned = read_image_data(image.uri.as_ref().unwrap(), &path)?;
+                ImageData::Owned(owned)
+            };
+            preloaded_image_data.push(image_data);
+        }
         Ok(Self {
             buffer_data: preloaded_buffer_data,
+            image_data: preloaded_image_data,
             path: path.as_ref().to_owned(),
             raw: raw,
         })
     }
 
-    /// Returns an `Iterator` that walks the scenes of the glTF asset.
+    /// Returns an `Iterator` that visits the accessors of the glTF asset.
+    pub fn iter_accessors<'a>(&'a self) -> IterAccessors<'a, X> {
+        IterAccessors {
+            iter: self.raw.accessors.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the animations of the glTF asset.
+    pub fn iter_animations<'a>(&'a self) -> IterAnimations<'a, X> {
+        IterAnimations {
+            iter: self.raw.animations.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the pre-loaded buffers of the glTF
+    /// asset.
+    pub fn iter_buffers<'a>(&'a self) -> IterBuffers<'a, X> {
+        IterBuffers {
+            index: 0,
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the pre-loaded buffer views of the glTF
+    /// asset.
+    pub fn iter_buffer_views<'a>(&'a self) -> IterBufferViews<'a, X> {
+        IterBufferViews {
+            iter: self.raw.buffer_views.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the cameras of the glTF asset.
+    pub fn iter_cameras<'a>(&'a self) -> IterCameras<'a, X> {
+        IterCameras {
+            iter: self.raw.cameras.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the pre-loaded images of the glTF asset.
+    pub fn iter_images<'a>(&'a self) -> IterImages<'a, X> {
+        IterImages {
+            index: 0,
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the materials of the glTF asset.
+    pub fn iter_materials<'a>(&'a self) -> IterMaterials<'a, X> {
+        IterMaterials {            
+            iter: self.raw.materials.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the nodes of the glTF asset.
+    pub fn iter_nodes<'a>(&'a self) -> IterNodes<'a, X> {
+        IterNodes {            
+            iter: self.raw.nodes.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the scenes of the glTF asset.
+    pub fn iter_samplers<'a>(&'a self) -> IterSamplers<'a, X> {
+        IterSamplers {            
+            iter: self.raw.samplers.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the samplers of the glTF asset.
     pub fn iter_scenes<'a>(&'a self) -> IterScenes<'a, X> {
         IterScenes {            
             iter: self.raw.scenes.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the skins of the glTF asset.
+    pub fn iter_skins<'a>(&'a self) -> IterSkins<'a, X> {
+        IterSkins {            
+            iter: self.raw.skins.iter(),
+            root: self,
+        }
+    }
+
+    /// Returns an `Iterator` that visits the textures of the glTF asset.
+    pub fn iter_textures<'a>(&'a self) -> IterTextures<'a, X> {
+        IterTextures {            
+            iter: self.raw.textures.iter(),
             root: self,
         }
     }
@@ -289,10 +583,114 @@ impl<X: Extras> Validate<X> for Root<X> {
     }
 }
 
+impl<'a, X: 'a + Extras> Iterator for IterAccessors<'a, X> {
+    type Item = Accessor<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Accessor::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterAnimations<'a, X> {
+    type Item = Animation<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Animation::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterBuffers<'a, X> {
+    type Item = Buffer<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.root.raw.buffers.len() {
+            let raw = &self.root.raw.buffers[self.index];
+            let buffer_data = self.root.buffer_data_impl(self.index);
+            let item = Buffer::from_raw(self.root, raw, buffer_data);
+            self.index += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterBufferViews<'a, X> {
+    type Item = BufferView<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| BufferView::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterCameras<'a, X> {
+    type Item = Camera<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Camera::from_raw(raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterImages<'a, X> {
+    type Item = Image<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.root.raw.images.len() {
+            let raw = &self.root.raw.images[self.index];
+            let data = self.root.image_data_impl(self.index);
+            self.index += 1;
+            Some(Image::from_raw(self. root, raw, data))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterMaterials<'a, X> {
+    type Item = Material<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Material::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterNodes<'a, X> {
+    type Item = Node<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Node::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterSamplers<'a, X> {
+    type Item = Sampler<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Sampler::from_raw(self.root, raw))
+    }
+}
+
 impl<'a, X: 'a + Extras> Iterator for IterScenes<'a, X> {
     type Item = Scene<'a, X>;
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|raw| Scene::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterSkins<'a, X> {
+    type Item = Skin<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Skin::from_raw(self.root, raw))
+    }
+}
+
+impl<'a, X: 'a + Extras> Iterator for IterTextures<'a, X> {
+    type Item = Texture<'a, X>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|raw| Texture::from_raw(self.root, raw))
+    }
+}
+
+impl From<image_crate::ImageError> for LoadError {
+    fn from(err: image_crate::ImageError) -> LoadError {
+        LoadError::Image(err)
+    }
+}
+
+impl From<std::io::Error> for LoadError {
+    fn from(err: std::io::Error) -> LoadError {
+        LoadError::Io(err)
     }
 }
 

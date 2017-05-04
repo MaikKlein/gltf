@@ -9,7 +9,7 @@
 
 use serde_json;
 use std;
-use v2::{raw, validation, Extras, Root, Validate};
+use v2::{raw, root, validation, Extras, Root, Validate};
 
 /// Error encountered when importing a glTF 2.0 asset.
 #[derive(Debug)]
@@ -31,6 +31,9 @@ pub enum ImportError {
     
     /// The glTF version of the asset is incompatible with this function.
     IncompatibleVersion(String),
+
+    /// Error encountered when loading the glTF data.
+    Load(root::LoadError),
 
     /// Error encountered when validating glTF.
     Validation(Vec<validation::Error>),
@@ -62,7 +65,7 @@ pub fn import<P, X>(path: P) -> Result<Root<X>, ImportError>
         import_standard_gltf(buffer)?
     };
 
-    let root = Root::from_raw(raw, path)?;
+    let root = Root::load(raw, path)?;
     let mut errs = Vec::new();
     {
         let warn_fn = |source: &str, description: &str| {
@@ -81,6 +84,12 @@ pub fn import<P, X>(path: P) -> Result<Root<X>, ImportError>
         Ok(root)
     } else {
         Err(Validation(errs))
+    }
+}
+ 
+impl From<root::LoadError> for ImportError {
+    fn from(err: root::LoadError) -> ImportError {
+        ImportError::Load(err)
     }
 }
 

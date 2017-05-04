@@ -7,8 +7,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[cfg(feature = "tree")]
-extern crate libc;
+extern crate image as image_crate;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;

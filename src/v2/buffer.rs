@@ -72,6 +72,7 @@ impl<'a, X: 'a + Extras> BufferView<'a, X> {
         &buffer_data[begin..end]
     }
 
+    /// Constructor for a `BufferView`.
     pub fn from_raw(
         root: &'a Root<X>,
         raw: &'a raw::buffer::BufferView<X>,

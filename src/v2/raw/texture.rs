@@ -147,6 +147,8 @@ pub struct TextureExtensions {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 /// Reference to a `Texture`.
+// Parent structures are expected to include validation for `index` in their own
+// `Validate` implementation.
 pub struct TextureInfo<X: Extras> {
     /// The index of the texture.
     pub index: Index<Texture<X>>,

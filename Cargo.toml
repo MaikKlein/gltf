@@ -14,7 +14,7 @@ include = [
 ]
 
 [dependencies]
-libc = "0.2"
+image = "0.13"
 serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
